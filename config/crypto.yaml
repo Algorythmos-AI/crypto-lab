@@ -1,0 +1,33 @@
+# Crypto desk (ADR 0005, DEC-0012). Read by wt.crypto. Frozen per gate: a change to anything under `strategy`,
+# `costs` or `quality` is a new trial in family C and needs a decision record.
+venue: kraken                    # public market-data endpoints only; the host holds no Kraken credentials
+quote_currency: AUD
+pairs:                           # ours -> Kraken's REST pair name
+  BTC/AUD: XBTAUD
+  ETH/AUD: ETHAUD
+  SOL/AUD: SOLAUD
+timeframe_min: 15
+bars: 100                        # closed bars per evaluation
+
+strategy:
+  name: rsi_vwap_ema_pullback    # long only
+  rsi_period: 14
+  rsi_below: 32
+  ema_period: 8
+  stop_loss_pct: 0.5
+  take_profit_pct: 1.0
+  time_stop_bars: 40             # exit at the close of the 40th bar if neither level was reached
+
+costs:                           # assumptions until C1 confirms them against the venue's schedule
+  taker_fee_pct: 0.40
+  slippage_bps: 5
+
+quality:                         # a pair is tradable for a bar only if all of these hold
+  min_trades_in_bar: 1
+  max_spread_pct: 0.15
+  max_quote_age_s: 30
+  max_clock_skew_s: 5
+  stale_after_cycles: 3          # then crypto:data-stale pages
+
+account:
+  start_equity: 10000            # AUD, paper

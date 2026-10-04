@@ -1,0 +1,8 @@
+id: HYP-0020
+trial: "C-PULLBACK"
+family: C                       # crypto desk; counted apart from the equity trials (DEC-0012)
+status: proposed                # becomes pre-registered when the owner accepts DEC-0012
+statement: "On Kraken spot pairs that pass the C0 data-quality gate, a long-only pullback entry (close above session VWAP and above EMA-8 with RSI-14 below a threshold, fixed stop, fixed target, time stop) on closed 15-minute bars has positive fixed-rule out-of-sample expectancy after exchange fees and slippage."
+config: config/crypto.yaml      # every rule and number comes from this file at the commit named in the experiment's manifest
+evidence: {decision: DEC-0012, adr: docs/adr/0005-desks.md}
+falsified_if: "Any C1 gate fails in scripts/crypto_backtest.py: CI95 lower bound of mean R <= 0 after fees at 1.5x slippage, deflated Sharpe <= 0.95 at the family-C trial count, random-entry control p >= 0.05, profit factor < 1.2, or fewer than 30 trades in the out-of-sample span."
