@@ -1,11 +1,11 @@
 # Crypto desk (ADR 0005, DEC-0012). Read by wt.crypto. Frozen per gate: a change to anything under `strategy`,
 # `costs` or `quality` is a new trial in family C and needs a decision record.
 venue: kraken                    # public market-data endpoints only; the host holds no Kraken credentials
-quote_currency: AUD
+quote_currency: USD
 pairs:                           # ours -> Kraken's REST pair name
-  BTC/AUD: XBTAUD
-  ETH/AUD: ETHAUD
-  SOL/AUD: SOLAUD
+  BTC/USD: XBTUSD
+  ETH/USD: ETHUSD
+  SOL/USD: SOLUSD
 timeframe_min: 15
 bars: 100                        # closed bars per evaluation
 
@@ -30,7 +30,7 @@ quality:                         # a pair is tradable for a bar only if all of t
   stale_after_cycles: 3          # then crypto:data-stale pages
 
 account:
-  start_equity: 10000            # AUD, paper
+  start_equity: 10000            # USD, paper
 
 gates:                           # DEC-0012. Reported by the snapshot; not part of the frozen config hash.
   c0:

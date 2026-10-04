@@ -20,7 +20,10 @@ from wt.ops import alerts as alerts_mod
 
 ROOT = Path(__file__).resolve().parents[2]
 FIX = ROOT / "tests/fixtures/kraken"
-CFG = yaml.safe_load((ROOT / "config/crypto.yaml").read_text())
+FILE_CFG = yaml.safe_load((ROOT / "config/crypto.yaml").read_text())
+# The recordings under tests/fixtures/kraken are the AUD pairs (thin markets: what the quality gate is for), so the
+# tests run the frozen rules on those pairs whatever the desk trades.
+CFG = {**FILE_CFG, "quote_currency": "AUD", "pairs": {"BTC/AUD": "XBTAUD", "ETH/AUD": "ETHAUD", "SOL/AUD": "SOLAUD"}}
 P = Params.of(CFG["strategy"])
 INFO = PairInfo(8, Decimal("0.1"), Decimal("0.00005"), Decimal("1"))
 DAY = 86_400
@@ -271,7 +274,7 @@ LIMITS = risk.Limits(("BTC/AUD", "ETH/AUD", "SOL/AUD"), Decimal(50), Decimal(120
 
 def test_limits_load_from_the_risk_file():
     lim = risk.load_limits()
-    assert lim.allowlist == tuple(CFG["pairs"]) and lim.max_notional == 50 and lim.daily_loss_latch == 20
+    assert lim.allowlist == tuple(FILE_CFG["pairs"]) and lim.max_notional == 50 and lim.daily_loss_latch == 20
 
 
 def test_each_limit_blocks_entries_with_its_own_code(crypto, monkeypatch):
@@ -561,3 +564,14 @@ def test_the_crypto_package_imports_no_broker_and_only_the_public_base_url():
     from wt.crypto import data
     assert data.BASE == "https://api.kraken.com/0/public"
     assert [p.name for p in (ROOT / "src/wt/crypto").glob("*.py") if "requests" in p.read_text()] == ["data.py"]
+
+
+def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
+    """DEC-0012: the AUD pairs fail the data gate, so the frozen config is the USD pairs, in family C at 4 trials."""
+    from wt.research.trials import family_trial_count
+    assert FILE_CFG["pairs"] == {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD"}
+    assert FILE_CFG["quote_currency"] == "USD" and family_trial_count("C") == 4
+    record = (ROOT / "research/decisions/DEC-0012-crypto-desk-preregistration.md").read_text()
+    assert "Status: ACCEPTED" in record and "starts at **4**" in record and "BTC/USD, ETH/USD and SOL/USD" in record
+    with pytest.raises(ValueError):
+        family_trial_count("Z")

@@ -30,7 +30,7 @@ from wt.ops import publish  # noqa: E402
 
 FIXTURE = ROOT / "dashboard" / "test" / "fixtures" / "crypto.v1.json"
 NOW = dt.datetime(2026, 10, 2, 20, 0, 40, tzinfo=dt.UTC)
-BASE = {"BTC/AUD": 120_000.0, "ETH/AUD": 3_900.0, "SOL/AUD": 175.0}
+BASE = {"BTC/USD": 120_000.0, "ETH/USD": 3_900.0, "SOL/USD": 175.0}
 INFO = PairInfo(8, Decimal("0.01"), Decimal("0.00001"), Decimal("1"))
 
 
@@ -49,8 +49,8 @@ def synthetic(state: Path, days: int = 5, seed: int = 7) -> None:
         seen: dict[str, Any] = {}
         for pair in BASE:
             price[pair] *= 1 + rng.gauss(0, 0.0015)
-            thin = pair != "BTC/AUD" and rng.random() < (0.45 if pair == "ETH/AUD" else 0.3)
-            spread = {"BTC/AUD": 0.08, "ETH/AUD": 0.24, "SOL/AUD": 0.31}[pair] * rng.uniform(0.7, 1.4)
+            thin = pair != "BTC/USD" and rng.random() < (0.45 if pair == "ETH/USD" else 0.3)
+            spread = {"BTC/USD": 0.08, "ETH/USD": 0.24, "SOL/USD": 0.31}[pair] * rng.uniform(0.7, 1.4)
             fv = {k: None for k in features.COLUMNS}
             fv.update(rsi=round(min(95, max(5, rng.gauss(50, 14))), 2), atr_pct=round(abs(rng.gauss(0.12, 0.05)), 4),
                       vwap_distance_pct=round(rng.gauss(0, 0.25), 4), ema8_distance_pct=round(rng.gauss(0, 0.1), 4),
@@ -66,21 +66,21 @@ def synthetic(state: Path, days: int = 5, seed: int = 7) -> None:
             with open(f, "a") as fh:
                 fh.write(json.dumps(snapshot_obs, sort_keys=True) + "\n")
             seen[pair] = {"bar": t, "tradable": not quality, "quality": quality, "fire": fire}
-        if i % 60 == 20 and "BTC/AUD" not in book.positions:                # a trade every 15 hours or so
-            pos = book.buy("BTC/AUD", Decimal(50), price["BTC/AUD"], INFO, 0.40, 5, t + 910, t, 0.5, 1.0)
-            ledger.append(journal, {"id": f"e{i}", "kind": "entry", "t": when.isoformat(), "pair": "BTC/AUD", "bar": t,
+        if i % 60 == 20 and "BTC/USD" not in book.positions:                # a trade every 15 hours or so
+            pos = book.buy("BTC/USD", Decimal(50), price["BTC/USD"], INFO, 0.40, 5, t + 910, t, 0.5, 1.0)
+            ledger.append(journal, {"id": f"e{i}", "kind": "entry", "t": when.isoformat(), "pair": "BTC/USD", "bar": t,
                                     "qty": str(pos.qty), "price": str(pos.entry_price), "config": h})
-        elif i % 60 == 27 and "BTC/AUD" in book.positions and i < days * 96 - 60:
-            pos = book.positions["BTC/AUD"]
+        elif i % 60 == 27 and "BTC/USD" in book.positions and i < days * 96 - 60:
+            pos = book.positions["BTC/USD"]
             win = rng.random() < 0.45
-            fill = book.sell("BTC/AUD", float(pos.target if win else pos.stop), 0.40, 0 if win else 5, t + 910)
-            ledger.append(journal, {"id": f"x{i}", "kind": "exit", "t": when.isoformat(), "pair": "BTC/AUD",
+            fill = book.sell("BTC/USD", float(pos.target if win else pos.stop), 0.40, 0 if win else 5, t + 910)
+            ledger.append(journal, {"id": f"x{i}", "kind": "exit", "t": when.isoformat(), "pair": "BTC/USD",
                                     "reason": "target" if win else "stop", "config": h, **fill})
         elif i % 97 == 50:
-            ledger.append(journal, {"id": f"r{i}", "kind": "refused", "t": when.isoformat(), "pair": "ETH/AUD",
+            ledger.append(journal, {"id": f"r{i}", "kind": "refused", "t": when.isoformat(), "pair": "ETH/USD",
                                     "bar": t, "why": ["spread_wide", "kill"][: 1 + i % 2], "config": h})
         ledger.append(journal, {"id": f"c{i}", "kind": "cycle", "t": when.isoformat(), "config": h, "pairs": seen,
-                                "failed": {} if i % 131 else {"SOL/AUD": "HTTP 502"}, "kill": True,
+                                "failed": {} if i % 131 else {"SOL/USD": "HTTP 502"}, "kill": True,
                                 "open": sorted(book.positions),
                                 "equity": str(book.equity({k: v for k, v in price.items()}).quantize(Decimal("0.01")))})
     book.save(state / "book.json")
