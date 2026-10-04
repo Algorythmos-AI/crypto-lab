@@ -1,0 +1,144 @@
+"""Kraken public market data over REST. No key, no SDK, no CLI.
+
+    OHLC        closed bars only: Kraken's last row is the bar still forming, and `last` names the newest closed one
+    Ticker      best bid and ask
+    AssetPairs  lot and price precision, minimum order size and cost
+    Time        the venue's clock, for a skew check
+
+Every failure (HTTP status, an `error` list, a malformed body, a timeout) is a DataError, so a cycle can treat
+"no data" as one case and never act on a guess.
+"""
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
+
+import requests
+
+BASE = "https://api.kraken.com/0/public"
+TIMEOUT_S = 10.0
+MIN_INTERVAL_S = 1.1            # the public endpoints allow about one call a second per address
+
+
+class DataError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Bar:
+    t: int                      # bar open, epoch seconds UTC
+    o: float
+    h: float
+    l: float                    # noqa: E741 — the market-data name
+    c: float
+    vwap: float                 # 0.0 when nothing traded
+    v: float
+    n: int                      # trades in the bar; 0 = the bar is a carried-forward price, not a market
+
+    @property
+    def traded(self) -> bool:
+        return self.n > 0 and self.v > 0
+
+
+@dataclass(frozen=True)
+class Quote:
+    bid: float
+    ask: float
+    fetched: float              # time.time() when it was read: the ticker carries no timestamp of its own
+
+    @property
+    def mid(self) -> float:
+        return (self.bid + self.ask) / 2
+
+    @property
+    def spread_pct(self) -> float:
+        return (self.ask - self.bid) / self.mid * 100 if self.mid > 0 else float("inf")
+
+
+@dataclass(frozen=True)
+class PairInfo:
+    lot_decimals: int
+    tick: Decimal
+    order_min: Decimal          # base units
+    cost_min: Decimal           # quote currency
+
+
+Get = Callable[[str, dict[str, Any]], Any]
+
+
+def _http_get(url: str, params: dict[str, Any]) -> Any:
+    r = requests.get(url, params=params, timeout=TIMEOUT_S)
+    if r.status_code != 200:
+        raise DataError(f"HTTP {r.status_code}")
+    return r.json()
+
+
+class KrakenPublic:
+    def __init__(self, get: Get | None = None, min_interval_s: float = MIN_INTERVAL_S,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
+        self._get, self._gap, self._sleep, self._last = get or _http_get, min_interval_s, sleep, 0.0
+        self.calls = 0
+
+    def _call(self, name: str, **params: Any) -> dict[str, Any]:
+        wait = self._last + self._gap - time.monotonic()
+        if wait > 0:
+            self._sleep(wait)
+        self._last = time.monotonic()
+        self.calls += 1
+        try:
+            body = self._get(f"{BASE}/{name}", params)
+        except DataError:
+            raise
+        except Exception as e:  # noqa: BLE001 — timeouts, DNS, TLS, bad JSON: all "no data"
+            raise DataError(f"{name}: {e.__class__.__name__}") from e
+        if not isinstance(body, dict) or body.get("error") or not isinstance(body.get("result"), dict):
+            err = body.get("error") if isinstance(body, dict) else None
+            raise DataError(f"{name}: {err or 'malformed response'}")
+        result: dict[str, Any] = body["result"]
+        return result
+
+    def time(self) -> int:
+        try:
+            return int(self._call("Time")["unixtime"])
+        except (KeyError, TypeError, ValueError) as e:
+            raise DataError("Time: malformed response") from e
+
+    def ohlc(self, pair: str, interval_min: int, since: int | None = None) -> list[Bar]:
+        """Closed bars, oldest first. `since` is exclusive, as Kraken defines it."""
+        res = self._call("OHLC", pair=pair, interval=interval_min, **({"since": since} if since is not None else {}))
+        try:
+            last = int(res["last"])
+            rows = next(v for k, v in res.items() if k != "last")
+            bars = [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[6]),
+                        int(r[7])) for r in rows if int(r[0]) <= last]
+        except (KeyError, StopIteration, TypeError, ValueError, IndexError) as e:
+            raise DataError("OHLC: malformed response") from e
+        step = interval_min * 60
+        if any(b.t % step for b in bars) or any(b2.t <= b1.t for b1, b2 in zip(bars, bars[1:], strict=False)):
+            raise DataError("OHLC: bars are not on the interval grid, or not in order")
+        return bars
+
+    def ticker(self, pair: str) -> Quote:
+        res = self._call("Ticker", pair=pair)
+        try:
+            row = next(iter(res.values()))
+            q = Quote(float(row["b"][0]), float(row["a"][0]), time.time())
+        except (StopIteration, KeyError, TypeError, ValueError, IndexError) as e:
+            raise DataError("Ticker: malformed response") from e
+        if not 0 < q.bid <= q.ask:
+            raise DataError("Ticker: crossed or empty book")
+        return q
+
+    def pair_info(self, pair: str) -> PairInfo:
+        res = self._call("AssetPairs", pair=pair)
+        try:
+            row = next(iter(res.values()))
+            if row.get("status") != "online":
+                raise DataError(f"AssetPairs: {pair} is {row.get('status')}")
+            return PairInfo(int(row["lot_decimals"]), Decimal(str(row["tick_size"])), Decimal(str(row["ordermin"])),
+                            Decimal(str(row["costmin"])))
+        except (StopIteration, KeyError, TypeError, ValueError, ArithmeticError) as e:
+            raise DataError("AssetPairs: malformed response") from e
