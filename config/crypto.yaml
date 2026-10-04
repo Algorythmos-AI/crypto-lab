@@ -31,3 +31,9 @@ quality:                         # a pair is tradable for a bar only if all of t
 
 account:
   start_equity: 10000            # AUD, paper
+
+gates:                           # DEC-0012. Reported by the snapshot; not part of the frozen config hash.
+  c0:
+    min_days: 14
+    min_traded_share: 0.90
+    max_median_spread_pct: 0.15
