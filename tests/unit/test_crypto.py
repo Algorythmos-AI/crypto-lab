@@ -435,6 +435,7 @@ def test_an_entry_then_a_target_exit_then_the_same_journal_on_a_replay(crypto, t
     other = dataclasses.replace(desk, state_dir=tmp_path / "again", kill_file=tmp_path / "again/KILL",
                                 ledgers=(("crypto", tmp_path / "again/crypto_journal.jsonl"),),
                                 chain_flag=tmp_path / "again/chain-broken")
+    other.state_dir.mkdir()                                  # an existing desk; a new one starts with KILL on
     w = venue_with_a_signal()
     cycle.run(now=w.now, api=w.api(), desk=other, cfg=CFG, limits=LIMITS, alerts=crypto[1])
     w.now, w.ohlc = v.now, v.ohlc
@@ -575,3 +576,41 @@ def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
     assert "Status: ACCEPTED" in record and "starts at **4**" in record and "BTC/USD, ETH/USD and SOL/USD" in record
     with pytest.raises(ValueError):
         family_trial_count("Z")
+
+
+# ---------------------------------------------------------------- rollout (phase 4)
+
+def test_the_desk_is_born_with_its_kill_switch_on(crypto):
+    """The first cycle on a host creates the state directory and the kill file together: no window with entries on."""
+    desk, a, _ = crypto
+    import shutil
+    shutil.rmtree(desk.state_dir)
+    v = venue_with_a_signal()
+    run(v, crypto)
+    assert desk.kill_file.exists() and "owner removes it" in desk.kill_file.read_text()
+    assert [r["kind"] for r in journal(desk)] == ["refused", "cycle"] and journal(desk)[0]["why"] == ["kill"]
+    desk.kill_file.unlink()                                                  # the owner removes it
+    v.now += 900
+    v.ohlc[("XBTAUD", 15)] = (v.ohlc[("XBTAUD", 15)][0], T0 + 900)
+    run(v, crypto)
+    assert not desk.kill_file.exists()                                       # an existing desk is never re-killed
+
+
+def test_owner_controls_remove_the_switch_and_the_latch_and_leave_a_journal_line(crypto, monkeypatch, tmp_path, capsys):
+    from wt.crypto import control
+    from wt.ops import locks
+    desk, _, _ = crypto
+    monkeypatch.setattr(locks, "LOCK_DIR", tmp_path / "locks")
+    desk.kill_file.write_text("created with the desk")
+    risk.latch_file(desk).write_text("2026-10-04: realised -20")
+    with locks.job_lock("crypto"):
+        assert control.main(["unkill"], desk) == 2 and desk.kill_file.exists()        # a cycle is running
+    desk.chain_flag.write_text("x")
+    assert control.main(["unkill"], desk) == 2 and desk.kill_file.exists()            # broken evidence first
+    desk.chain_flag.unlink()
+    assert control.main(["unkill"], desk) == 0 and not desk.kill_file.exists()
+    assert control.main(["unkill"], desk) == 0                                         # already off: fine
+    assert control.main(["reset-latch"], desk) == 0 and not risk.latch_file(desk).exists()
+    rows = journal(desk)
+    assert [(r["kind"], r["action"]) for r in rows] == [("control", "unkill"), ("control", "reset-latch")]
+    assert rows[0]["was"] == "created with the desk" and ledger.verify_chain(desk.journal) == []

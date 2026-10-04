@@ -118,7 +118,11 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
     limits, alerts = limits or risk.load_limits(desk.strategy), alerts or Alerts()
     p, costs, qcfg, tf = Params.of(cfg["strategy"]), cfg["costs"], cfg["quality"], int(cfg["timeframe_min"])
     cfg_hash, day = config_hash(cfg), utc_day(now)
-    desk.state_dir.mkdir(parents=True, exist_ok=True)
+    if not desk.state_dir.exists():
+        # The desk's first run on this host. It starts with its kill switch on: it records and publishes, and
+        # opens nothing until the owner removes the file (DEC-0012).
+        desk.state_dir.mkdir(parents=True)
+        desk.kill_file.write_text(f"created with the desk on {day}; the owner removes it (make unkill DESK=crypto)\n")
     book_path = desk.state_dir / "book.json"
     book = Book.load(book_path, Decimal(str(cfg["account"]["start_equity"])))
     flush(book, book_path, desk.journal)                    # repair: anything decided last time is journalled now
