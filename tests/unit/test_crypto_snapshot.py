@@ -102,3 +102,27 @@ def test_verify_reads_the_crypto_desk_from_health(monkeypatch):
     assert snapshot.verify_stored({"run_id": "c1"}, "https://x/api/ingest", None) == (False, "health unreadable (Timeout)")
     monkeypatch.setattr(publish, "read_health", lambda url, bypass: ({"desks": None}, ""))
     assert not snapshot.verify_stored({"run_id": "c1"}, "https://x/api/ingest", None)[0]
+
+
+def test_a_young_desk_is_held_to_the_cycles_it_could_have_run():
+    """Day one read "1 of 96 cycles" and turned the page amber for a desk that had missed nothing."""
+    now = dt.datetime(2026, 10, 4, 22, 46, tzinfo=dt.UTC)
+
+    def cyc(minutes_ago, failed=False):
+        return {"kind": "cycle", "t": (now - dt.timedelta(minutes=minutes_ago)).isoformat(), "failed": {"x": "y"} if failed else {}}
+    a = snapshot.activity([cyc(31), cyc(16), cyc(1)], [], now, 15)
+    assert (a["cycles_24h"], a["expected_24h"]) == (3, 3)
+    a = snapshot.activity([cyc(31), cyc(16, failed=True), cyc(1)], [], now, 15)
+    assert (a["cycles_24h"], a["expected_24h"], a["failed_24h"]) == (2, 3, 1)
+    old = [cyc(m) for m in range(3 * 24 * 60, 0, -15)]
+    assert snapshot.activity(old, [], now, 15)["expected_24h"] == 96
+    assert snapshot.activity([], [], now, 15)["expected_24h"] == 0
+
+
+def test_the_publish_job_shows_its_previous_finished_run_not_itself_running():
+    running = {"job": "dashboard-crypto", "status": "running", "started": "t2", "ended": None}
+    done = {"job": "dashboard-crypto", "status": "ok", "started": "t1", "ended": "t1b"}
+    cycle_run = {"job": "crypto", "status": "ok"}
+    last = {"crypto": cycle_run, "dashboard-crypto": running}
+    assert snapshot._last_jobs(last, [done, cycle_run]) == {"crypto": cycle_run, "dashboard-crypto": done}
+    assert snapshot._last_jobs(last, [cycle_run]) == {"crypto": cycle_run}             # the very first publish

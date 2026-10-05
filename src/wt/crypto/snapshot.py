@@ -202,14 +202,34 @@ def activity(journal: list[dict[str, Any]], obs: list[dict[str, Any]], now: dt.d
         kind = {"entry": "entries", "exit": "exits", "cycle": "cycles"}.get(str(r.get("kind")))
         if kind:
             daily.setdefault(str(r.get("t", ""))[:10], Counter())[kind] += 1
+    # A desk younger than a day is held to the cycles it could have run, not to a full day's worth.
+    full = 24 * 60 // tf
+    try:
+        first = dt.datetime.fromisoformat(str(cycles[0]["t"])) if cycles else now
+        expected = max(1, min(full, int((now - first).total_seconds() // (tf * 60)) + 1)) if cycles else 0
+    except (ValueError, TypeError, KeyError):
+        expected = full
     return {"cycles_24h": sum(str(r.get("t", "")) >= day_ago and not r.get("failed") for r in cycles),
-            "expected_24h": 24 * 60 // tf,
+            "expected_24h": expected,
             "failed_24h": sum(str(r.get("t", "")) >= day_ago and bool(r.get("failed")) for r in cycles),
             "observations_7d": len(obs), "fires_7d": sum(bool(o.get("would_fire")) for o in obs),
             "entries_7d": sum(r.get("kind") == "entry" for r in recent),
             "refused_7d": dict(Counter(w for r in recent if r.get("kind") == "refused" for w in r.get("why") or [])),
             "daily": [{"day": k, **{f: v.get(f, 0) for f in ("observations", "fires", "entries", "exits", "cycles")}}
                       for k, v in sorted(daily.items())[-14:]]}
+
+
+PUBLISH_JOB = "dashboard-crypto"
+
+
+def _last_jobs(last: dict[str, Any], runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The last run of each job. The publish job is the one building this snapshot, so its own heartbeat says
+    "running": show its previous, finished run instead (as the stocks publisher does), or nothing on the first."""
+    prev = next((r for r in reversed(runs) if r.get("job") == PUBLISH_JOB), None)
+    out = {k: v for k, v in last.items() if k != PUBLISH_JOB}
+    if prev is not None:
+        out[PUBLISH_JOB] = prev
+    return out
 
 
 def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -267,7 +287,7 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "distributions": {k: histogram([v for o in obs if (v := _f((o.get("features") or {}).get(k))) is not None])
                           for k in HISTOGRAMS},
         "ml": {"observations": len(obs), "labelled": 0, "model": None, "status": "not_trained"},
-        "jobs": {"last": {k: v for k, v in last_runs().items() if mine(k)}, "runs": runs[-200:]},
+        "jobs": {"last": _last_jobs({k: v for k, v in last_runs().items() if mine(k)}, runs), "runs": runs[-200:]},
         "alerts": {"firing": [{"key": k, "since": v.get("since")} for k, v in sorted(Alerts().firing().items())
                               if desk_of_alert(k) == desk.name]},
     }
