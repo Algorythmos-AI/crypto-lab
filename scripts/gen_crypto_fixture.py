@@ -84,10 +84,66 @@ def synthetic(state: Path, days: int = 5, seed: int = 7) -> None:
                                 "open": sorted(book.positions),
                                 "equity": str(book.equity({k: v for k, v in price.items()}).quantize(Decimal("0.01")))})
     book.save(state / "book.json")
+    sleeves_fixture(state, journal, cfg, rng)
     (state / "KILL").write_text("fixture\n")
     import os
     stamp = (NOW - dt.timedelta(days=2)).timestamp()
     os.utime(state / "KILL", (stamp, stamp))
+
+
+def sleeves_fixture(state: Path, journal: Path, cfg: dict[str, Any], rng: random.Random) -> None:
+    """The tournament sleeves as the engine leaves them: TREND with closed trades and an open position, BREAK
+    with closed trades, DIP untouched. Invented prices on the pairs the decision record names."""
+    from wt.crypto import risk
+    from wt.crypto import sleeves as engine
+    info = PairInfo(8, Decimal("0.001"), Decimal("0.5"), Decimal("0.5"))
+    end = int(NOW.timestamp()) // 14_400 * 14_400
+    plan = {"trend": [("AVAX/USD", 11.5, 1.9), ("ADA/USD", 0.62, -1.0), ("LINK/USD", 14.2, 2.6)],
+            "break": [("AVAX/USD", 11.5, 2.0), ("SOL/USD", 175.0, -1.0)], "dip": []}
+    marks: dict[str, list[float]] = {}
+    for name, trades in plan.items():
+        extra = {"sleeve": name, "strategy": cfg["sleeves"][name]["hypothesis"], "tf": 240, "stage": engine.STAGE,
+                 "config": engine.sleeve_hash(cfg, name)}
+        book = Book(Decimal(10_000), Decimal(10_000))
+        folder = risk.sleeve_dir(_desk(state), name)
+        for k, (pair, px, r) in enumerate(trades):
+            t = end - 14_400 * (30 - 6 * k)
+            price, atr = Decimal(str(px)), Decimal(str(px)) * Decimal("0.02")
+            stop = price - 2 * atr
+            qty = (Decimal(100) / (price - stop)).quantize(Decimal("0.00000001"))
+            qty = min(qty, (Decimal(3_000) / price).quantize(Decimal("0.00000001")))
+            pos = book.buy_qty(pair, qty, price, info, 0.40, t + 10, t - 14_400, stop, price + 4 * atr, name, atr)
+            ledger.append(journal, {"id": f"s{name}{k}e", "kind": "entry", "t": _iso(t + 10), "pair": pair, "bar": t - 14_400,
+                                    "qty": str(pos.qty), "price": str(price), "stop": str(stop), **extra})
+            out = float(price + (price - stop) * Decimal(str(r)))
+            fill = book.sell(pair, out, 0.40, 5 if r < 0 else 0, t + 10 + 3_600 * rng.randint(5, 40))
+            ledger.append(journal, {"id": f"s{name}{k}x", "kind": "exit", "t": _iso(t + 10 + fill["held_s"]), "pair": pair,
+                                    "reason": "stop" if r < 0 else ("trend_exit" if name == "trend" else "target"),
+                                    "qty": str(pos.qty), "entry_price": str(price), "entry_t": _iso(t + 10), **extra, **fill})
+        if name == "trend":
+            price = Decimal("2.41")
+            pos = book.buy_qty("XRP/USD", Decimal("1041.66666666"), price, info, 0.40, end + 10, end - 14_400,
+                               Decimal("2.314"), Decimal("Infinity"), name, Decimal("0.048"))
+            ledger.append(journal, {"id": "strendopen", "kind": "entry", "t": _iso(end + 10), "pair": "XRP/USD",
+                                    "bar": end - 14_400, "qty": str(pos.qty), "price": str(price), **extra})
+            marks["XRP/USD"] = [2.447, end + 910]
+        ledger.append(journal, {"id": f"s{name}refused", "kind": "refused", "t": _iso(end + 10), "pair": "DOGE/USD",
+                                "bar": end - 14_400, "why": ["stop_too_tight"], **extra})
+        ledger.append(journal, {"id": f"s{name}eval", "kind": "sleeve", "t": _iso(end + 10), "open": sorted(book.positions),
+                                "equity": str(book.equity({}).quantize(Decimal("0.01"))), "kill": False,
+                                "pairs": {p: {"bar": end - 14_400, "fire": p == "DOGE/USD",
+                                              "why": [] if p == "DOGE/USD" else ["no_new_high"]}
+                                          for p in cfg["sleeves"]["common"]["pairs"]}, **extra})
+        book.save(folder / "book.json")
+    (state / "sleeves" / "data.json").write_text(json.dumps({"marks": marks}))
+
+
+def _iso(t: float) -> str:
+    return dt.datetime.fromtimestamp(t, dt.UTC).isoformat(timespec="seconds")
+
+
+def _desk(state: Path) -> Any:
+    return dataclasses.replace(DESKS["crypto"], state_dir=state)
 
 
 def build() -> dict[str, Any]:

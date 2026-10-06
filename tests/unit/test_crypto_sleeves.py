@@ -19,6 +19,7 @@ from wt.crypto import cycle, risk, rules, sleeves, snapshot
 from wt.crypto.book import Book, to_lot, to_tick
 from wt.crypto.data import Bar, DataError, KrakenPublic, PairInfo
 from wt.ops import alerts as alerts_mod
+from wt.ops import publish
 
 ROOT = Path(__file__).resolve().parents[2]
 CFG = yaml.safe_load((ROOT / "config/crypto.yaml").read_text())
@@ -462,3 +463,46 @@ def test_the_baselines_snapshot_does_not_count_the_sleeves_trades(crypto):
     snap = snapshot.collect(dt.datetime.fromtimestamp(v.now, dt.UTC), desk=d, cfg=CFG)
     assert snap["perf"]["trades"] == 0 and snap["book"]["positions"] == [] and snap["book"]["equity"] == 10_000.0
     assert snap["activity"]["entries_7d"] == 0
+
+
+def test_the_snapshot_reports_each_sleeve_from_its_own_book_and_values_positions_at_the_last_bid(crypto):
+    d, _, _ = crypto
+    v = venue({"XBTUSD": break_rows()})
+    run(v, crypto)
+    when = dt.datetime.fromtimestamp(v.now, dt.UTC)
+    snap = snapshot.collect(when, desk=d, cfg=CFG)
+    by = {s["name"]: s for s in snap["sleeves"]}
+    assert list(by) == ["trend", "break", "dip"] and all(s["stage"] == "incubation" for s in by.values())
+    pos = by["break"]["positions"][0]
+    entry = rows_of(d, "break", "entry")[0]
+    assert pos["pair"] == "BTC/USD" and pos["entry_price"] == float(entry["price"]) and pos["mark"] == 103.95
+    assert pos["unrealised"] == pytest.approx(pos["qty"] * (103.95 - pos["entry_price"]) - float(entry["fee"]))
+    assert by["break"]["equity"] == pytest.approx(10_000 + pos["unrealised"]) and by["break"]["open_pnl"] == pos["unrealised"]
+    assert pos["unrealised_r"] == pytest.approx(pos["unrealised"] / pos["risk"]) and by["break"]["trades"] == 0
+    assert by["dip"]["equity"] == 10_000.0 and by["dip"]["positions"] == [] and by["dip"]["signals"] == []
+    assert by["break"]["signals"][0]["outcome"] == "entered" and len(by["break"]["why_not"]) == 8
+    assert by["trend"]["positions"][0]["target"] is None                              # no target: published as none
+
+    v.now += 900
+    minute, target = B0 + H4 + 60, float(entry["target"])
+    v.ohlc[("XBTUSD", 1)] = ([row(minute, 104.2, target + 1, 104.1, target + 0.5)], minute)
+    v.quote["XBTUSD"] = (target + 0.4, target + 0.5)
+    run(v, crypto)
+    snap = snapshot.collect(dt.datetime.fromtimestamp(v.now, dt.UTC), desk=d, cfg=CFG)
+    b = next(s for s in snap["sleeves"] if s["name"] == "break")
+    won = float(rows_of(d, "break", "exit")[0]["pnl"])
+    assert (b["trades"], b["wins"], b["win_rate"], b["positions"]) == (1, 1, 1.0, [])
+    assert b["pnl"]["total"] == won and b["pnl"]["today"] == won and b["equity"] == pytest.approx(10_000 + won)
+    assert b["recent"][0]["reason"] == "target" and b["recent"][0]["entry_price"] == float(entry["price"])
+    assert b["recent"][0]["entry_time"] == entry["t"] and b["recent"][0]["exit_price"] == target
+    clean = snapshot.build(snap, publish.Sanitizer(lambda x: x, None, strict=False), "r", when)
+    assert snapshot.validate(clean) == [] and len(clean["sleeves"]) == 3
+    assert snap["perf"]["trades"] == 0 and snap["book"]["equity"] == 10_000.0        # the baseline's own figures
+
+
+def test_a_fault_in_the_sleeves_view_leaves_the_baselines_snapshot_whole(crypto, monkeypatch):
+    d, _, _ = crypto
+    run(venue(), crypto)
+    monkeypatch.setattr(snapshot, "sleeves_view", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("bug")))
+    snap = snapshot.collect(dt.datetime.fromtimestamp(NOW, dt.UTC), desk=d, cfg=CFG)
+    assert snap["sleeves"] == [] and snap["book"]["equity"] == 10_000.0

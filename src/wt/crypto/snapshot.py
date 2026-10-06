@@ -71,6 +71,20 @@ ALLOW: dict[str, Any] = {
     "jobs": {"last": Map({"status": S, "exit": I, "started": S, "ended": S, "sha": S}),
              "runs": [{"job": S, "status": S, "exit": I, "started": S, "ended": S, "sha": S}]},
     "alerts": {"firing": [{"key": S, "since": S}]},
+    # ---- the tournament sleeves (DEC-0015): one strategy and one paper book each, never pooled ----
+    "sleeves": [{"name": S, "strategy": S, "stage": S, "tf_min": I, "config": S, "equity": N, "start_equity": N,
+                 "return_pct": N, "cash": N, "exposure": N, "open_pnl": N, "latched": B,
+                 "pnl": {"today": N, "week": N, "month": N, "total": N, "today_trades": I, "week_trades": I,
+                         "month_trades": I},
+                 "trades": I, "wins": I, "losses": I, "win_rate": N, "mean_r": N, "total_r": N, "fees": N, "max_dd": N,
+                 "positions": [{"pair": S, "qty": N, "entry_price": N, "entry_time": S, "stop": N, "target": N,
+                                "mark": N, "mark_time": S, "unrealised": N, "unrealised_pct": N, "unrealised_r": N,
+                                "risk": N}],
+                 "recent": [{"pair": S, "entry_time": S, "exit_time": S, "entry_price": N, "exit_price": N, "qty": N,
+                             "pnl": N, "r": N, "reason": S, "held_min": N}],
+                 "signals": [{"t": S, "pair": S, "outcome": S, "why": [S]}],
+                 "why_not": [{"pair": S, "bar": S, "fire": B, "why": [S]}],
+                 "equity_curve": [{"t": S, "equity": N}]}],
 }
 HISTOGRAMS = ("rsi", "atr_pct", "vwap_distance_pct", "volume_ratio")
 
@@ -220,6 +234,85 @@ def activity(journal: list[dict[str, Any]], obs: list[dict[str, Any]], now: dt.d
                       for k, v in sorted(daily.items())[-14:]]}
 
 
+def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> list[dict[str, Any]]:
+    """One entry per tournament sleeve, from its own book and its own rows of the journal. Open positions are
+    valued at the last bid the cycle read (the snapshot never calls the venue). Nothing is summed across sleeves."""
+    from wt.crypto import rules
+    from wt.crypto import sleeves as engine
+    sc = cfg.get("sleeves") or {}
+    if not sc:
+        return []
+    try:
+        state = json.loads((desk.state_dir / "sleeves" / "data.json").read_text())
+    except (OSError, ValueError):
+        state = {}
+    marks = {k: v for k, v in (state.get("marks") or {}).items() if isinstance(v, list) and len(v) == 2}
+    today = now.date()
+    week, month = (today - dt.timedelta(days=today.weekday())).isoformat(), today.replace(day=1).isoformat()
+    cutoff = (now - dt.timedelta(days=CURVE_DAYS)).isoformat()
+    out = []
+    for name in (n for n in rules.NAMES if n in sc):
+        mine = [r for r in rows if r.get("sleeve") == name]
+        folder = risk.sleeve_dir(desk, name)
+        book = Book.load(folder / "book.json", Decimal(str(sc["common"]["start_equity"])))
+        equity = float(book.equity({k: float(v[0]) for k, v in marks.items()}))
+        exits = [r for r in mine if r.get("kind") == "exit"]
+        pnl = [(str(r.get("t", ""))[:10], v) for r in exits if (v := _f(r.get("pnl"))) is not None]
+        rs = [r["r"] for r in exits if isinstance(r.get("r"), int | float)]
+        wins = sum(v > 0 for _, v in pnl)
+        run = peak = dd = 0.0
+        for _, v in pnl:
+            run += v
+            peak, dd = max(peak, run), min(dd, run - peak)
+        positions: list[dict[str, Any]] = []
+        for held in book.positions.values():
+            mark = marks.get(held.pair)
+            open_ = float(held.qty) * (float(mark[0]) - float(held.entry_price)) - float(held.entry_fee) if mark else None
+            positions.append({
+                "pair": held.pair, "qty": float(held.qty), "entry_price": float(held.entry_price), "entry_time": _iso(held.entry_t),
+                "stop": float(held.stop), "target": float(held.target) if held.target.is_finite() else None,
+                "mark": float(mark[0]) if mark else None, "mark_time": _iso(mark[1]) if mark else None,
+                "unrealised": open_, "risk": float(held.risk),
+                "unrealised_pct": (float(mark[0]) / float(held.entry_price) - 1) * 100 if mark else None,
+                "unrealised_r": open_ / float(held.risk) if open_ is not None and held.risk > 0 else None})
+        last_eval = next((r for r in reversed(mine) if r.get("kind") == "sleeve" and r.get("pairs")), None)
+        curve = {str(r["t"])[:13]: e for r in mine if r.get("kind") == "sleeve" and str(r.get("t", "")) >= cutoff
+                 and (e := _f(r.get("equity"))) is not None}
+        curve[now.isoformat()[:13]] = equity
+        opens: list[float] = [float(x["unrealised"]) for x in positions if x["unrealised"] is not None]
+
+        def total(since: str, pnl: list[tuple[str, float]] = pnl) -> tuple[float, int]:
+            got = [v for d, v in pnl if d >= since]
+            return sum(got), len(got)
+        out.append({
+            "name": name, "strategy": str(sc[name].get("hypothesis")), "stage": engine.STAGE,
+            "tf_min": int(sc["common"]["timeframe_min"]), "config": engine.sleeve_hash(cfg, name),
+            "equity": equity, "start_equity": float(book.start_equity),
+            "return_pct": (equity / float(book.start_equity) - 1) * 100 if book.start_equity else None,
+            "cash": float(book.cash), "exposure": float(book.exposure()), "open_pnl": sum(opens) if opens else None,
+            "latched": (folder / "latch").exists(),
+            "pnl": {"today": total(today.isoformat())[0], "week": total(week)[0], "month": total(month)[0],
+                    "total": total("")[0], "today_trades": total(today.isoformat())[1], "week_trades": total(week)[1],
+                    "month_trades": total(month)[1]},
+            "trades": len(exits), "wins": wins, "losses": len(pnl) - wins,
+            "win_rate": wins / len(pnl) if pnl else None, "mean_r": statistics.fmean(rs) if rs else None,
+            "total_r": sum(rs) if rs else None,
+            "fees": sum(f for r in exits if (f := _f(r.get("fees"))) is not None) if exits else None,
+            "max_dd": dd if pnl else None, "positions": positions,
+            "recent": [{"pair": r.get("pair"), "entry_time": r.get("entry_t"), "exit_time": r.get("t"),
+                        "entry_price": _f(r.get("entry_price")), "exit_price": _f(r.get("exit_price")),
+                        "qty": _f(r.get("qty")), "pnl": _f(r.get("pnl")), "r": r.get("r"), "reason": r.get("reason"),
+                        "held_min": round(r["held_s"] / 60, 1) if "held_s" in r else None} for r in exits[-20:]][::-1],
+            "signals": [{"t": r.get("t"), "pair": r.get("pair"),
+                         "outcome": "entered" if r["kind"] == "entry" else "refused", "why": r.get("why") or []}
+                        for r in mine if r.get("kind") in ("entry", "refused")][-12:][::-1],
+            "why_not": [{"pair": pair, "bar": _iso(v["bar"]) if isinstance(v.get("bar"), int) else None,
+                         "fire": bool(v.get("fire")), "why": v.get("why") or []}
+                        for pair, v in ((last_eval or {}).get("pairs") or {}).items() if isinstance(v, dict)],
+            "equity_curve": [{"t": k + ":00:00+00:00", "equity": v} for k, v in sorted(curve.items())]})
+    return out
+
+
 PUBLISH_JOB = "dashboard-crypto"
 
 
@@ -240,8 +333,9 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
     from wt.ops.schedule import JOBS
     desk, cfg = desk or DESKS["crypto"], cfg or load_yaml("crypto.yaml")
     pairs, tf = list(cfg["pairs"]), int(cfg["timeframe_min"])
-    # Rows that name a sleeve belong to the tournament (DEC-0015): everything below describes the baseline.
-    journal = [r for r in _jsonl(desk.journal) if not r.get("sleeve")]
+    # Rows that name a sleeve belong to the tournament (DEC-0015): the keys below `sleeves` describe the baseline.
+    every = _jsonl(desk.journal)
+    journal = [r for r in every if not r.get("sleeve")]
     obs = observations(desk, now)
     book = Book.load(desk.state_dir / "book.json", Decimal(str(cfg["account"]["start_equity"])))
     limits = risk.load_limits(desk.strategy)
@@ -292,7 +386,17 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "jobs": {"last": _last_jobs({k: v for k, v in last_runs().items() if mine(k)}, runs), "runs": runs[-200:]},
         "alerts": {"firing": [{"key": k, "since": v.get("since")} for k, v in sorted(Alerts().firing().items())
                               if desk_of_alert(k) == desk.name]},
+        "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now)),
     }
+
+
+def _guarded(view: Any) -> Any:
+    """The tournament view must never stop the baseline's snapshot: a fault leaves the key out, and says so."""
+    try:
+        return view()
+    except Exception as e:  # noqa: BLE001
+        print(f"sleeves view failed ({e.__class__.__name__}); left out", file=sys.stderr)
+        return []
 
 
 def build(raw: dict[str, Any], san: publish.Sanitizer, run_id: str, now: dt.datetime) -> dict[str, Any]:

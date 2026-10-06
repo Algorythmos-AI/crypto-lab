@@ -205,7 +205,7 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
     day, budget = utc_day(now), Budget(api, started)
     root = desk.state_dir / "sleeves"
     state_path = root / "data.json"
-    state: dict[str, Any] = {"stored_to": {}, "info_day": "", "info": {}}
+    state: dict[str, Any] = {"stored_to": {}, "info_day": "", "info": {}, "marks": {}}
     if state_path.exists():
         try:
             state = {**state, **json.loads(state_path.read_text())}
@@ -301,6 +301,8 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
                            **extra[n]})
             book.save(folder / "book.json")
             flush(book, folder / "book.json", desk.journal)
+        # The last bid read for each pair, for the snapshot to value open positions with (it never calls the venue).
+        state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in marks.items()}}
         write_atomic(state_path, json.dumps(state, sort_keys=True))
     return {"evaluated": {n: sorted(seen[n]) for n in names if seen[n]}, "failed": failed,
             "open": {n: sorted(books[n].positions) for n in names if books[n].positions}}
