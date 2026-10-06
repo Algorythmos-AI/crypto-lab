@@ -568,10 +568,11 @@ def test_the_crypto_package_imports_no_broker_and_only_the_public_base_url():
 
 
 def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
-    """DEC-0012: the AUD pairs fail the data gate, so the frozen config is the USD pairs, in family C at 4 trials."""
+    """DEC-0012: the AUD pairs fail the data gate, so the frozen config is the USD pairs. Family C began at 4
+    trials and DEC-0015 registered three more."""
     from wt.research.trials import family_trial_count
     assert FILE_CFG["pairs"] == {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD"}
-    assert FILE_CFG["quote_currency"] == "USD" and family_trial_count("C") == 4
+    assert FILE_CFG["quote_currency"] == "USD" and family_trial_count("C") == 7
     record = (ROOT / "research/decisions/DEC-0012-crypto-desk-preregistration.md").read_text()
     assert "Status: ACCEPTED" in record and "starts at **4**" in record and "BTC/USD, ETH/USD and SOL/USD" in record
     with pytest.raises(ValueError):
@@ -614,3 +615,21 @@ def test_owner_controls_remove_the_switch_and_the_latch_and_leave_a_journal_line
     rows = journal(desk)
     assert [(r["kind"], r["action"]) for r in rows] == [("control", "unkill"), ("control", "reset-latch")]
     assert rows[0]["was"] == "created with the desk" and ledger.verify_chain(desk.journal) == []
+
+
+def test_the_tournament_sleeves_are_registered_and_leave_the_baseline_alone():
+    """DEC-0015: three more strategies, each with its hypothesis, on eight pairs, under their own limits. The
+    baseline's frozen sections, and so its config hash, are what they were before the sleeves were added."""
+    sleeves = FILE_CFG["sleeves"]
+    assert set(sleeves) == {"common", "trend", "break", "dip"}
+    assert list(sleeves["common"]["pairs"])[:3] == list(FILE_CFG["pairs"]) and len(sleeves["common"]["pairs"]) == 8
+    for name, hyp in (("trend", "HYP-0021"), ("break", "HYP-0022"), ("dip", "HYP-0023")):
+        assert sleeves[name]["hypothesis"] == hyp
+        doc = yaml.safe_load(next((ROOT / "research/hypotheses").glob(f"{hyp}-*.yaml")).read_text())
+        assert doc["family"] == "C" and doc["evidence"]["decision"] == "DEC-0015" and doc["status"] == "pre-registered"
+    risk = yaml.safe_load((ROOT / "config/risk.yaml").read_text())
+    assert risk["CT"]["risk_pct"] == 1.0 and risk["CT"]["max_exposure_pct"] == 100 and risk["C"]["max_notional"] == 50
+    for dec in ("DEC-0014", "DEC-0015"):
+        assert "Status: ACCEPTED" in next((ROOT / "research/decisions").glob(f"{dec}-*.md")).read_text()
+    assert cycle.config_hash(FILE_CFG) == cycle.config_hash({k: v for k, v in FILE_CFG.items() if k != "sleeves"})
+    assert cycle.config_hash(FILE_CFG) == "01aec7d7c569"            # the hash the desk has stamped since 2026-10-04

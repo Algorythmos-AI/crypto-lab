@@ -1,0 +1,8 @@
+id: HYP-0023
+trial: "C-DIP"
+family: C                       # crypto desk; counted apart from the equity trials (DEC-0012, DEC-0015)
+status: pre-registered          # DEC-0015 accepted 2026-10-06
+statement: "On liquid Kraken USD spot pairs above their 50-day average, a long-only entry on the first 4-hour close back above EMA-8 after RSI-14 fell below 35, with a 2 ATR stop, a 3 ATR target and a 42-bar time stop, has positive fixed-rule expectancy after exchange fees and slippage."
+config: config/crypto.yaml      # sleeves.dip: every rule and number comes from this file at the commit named in the experiment's manifest
+evidence: {decision: DEC-0015, adr: docs/adr/0005-desks.md}
+falsified_if: "Any C1 gate fails in scripts/crypto_backtest.py: CI95 lower bound of mean R <= 0 after fees at 1.5x slippage, deflated Sharpe <= 0.95 at the family-C trial count, random-entry control p >= 0.05, profit factor < 1.2, or fewer than 30 trades in the tested span."

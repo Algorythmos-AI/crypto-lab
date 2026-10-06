@@ -30,7 +30,7 @@ lines `[ok]`), then the Crypto tab of the dashboard.
 | Action | Command (on the host, as `wt`) |
 |---|---|
 | Stop new entries | `make kill DESK=crypto REASON="..."` |
-| Allow entries (after gate C1 and the owner's decision) | `make unkill DESK=crypto` |
+| Allow entries (the owner's decision; before gate C1 the trades are incubation, DEC-0014) | `make unkill DESK=crypto` |
 | Clear the daily-loss latch | `make reset-crypto-latch` |
 | Stop the desk entirely | owner: `sudo systemctl disable --now wt-crypto.timer wt-dashboard-crypto.timer` |
 

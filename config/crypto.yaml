@@ -29,6 +29,54 @@ quality:                         # a pair is tradable for a bar only if all of t
   max_clock_skew_s: 5
   stale_after_cycles: 3          # then crypto:data-stale pages
 
+# The tournament sleeves (DEC-0014, DEC-0015): one strategy and one paper book each, beside the baseline above.
+# Frozen like `strategy`: a change to anything here is a new trial in family C and needs a decision record.
+# Not part of the baseline's config hash, so adding a sleeve never changes HYP-0020's identity.
+sleeves:
+  common:
+    timeframe_min: 240           # closed 4-hour bars on UTC boundaries
+    daily_min: 1440
+    bars: 120                    # closed 4-hour bars per evaluation
+    daily_bars: 60
+    atr_period: 14
+    stop_atr: 2.0
+    min_stop_pct: 1.0            # a signal whose stop is closer than this is skipped
+    max_stop_pct: 12.0           # or further than this
+    start_equity: 10000          # USD, paper, per sleeve
+    limits: CT                   # key in config/risk.yaml
+    pairs:                       # ours -> Kraken's REST pair name
+      BTC/USD: XBTUSD
+      ETH/USD: ETHUSD
+      SOL/USD: SOLUSD
+      XRP/USD: XRPUSD
+      ADA/USD: ADAUSD
+      DOGE/USD: XDGUSD
+      LINK/USD: LINKUSD
+      AVAX/USD: AVAXUSD
+  trend:                         # HYP-0021
+    hypothesis: HYP-0021
+    ema_fast: 20
+    ema_slow: 50
+    high_bars: 20                # close above the highest high of the previous N bars
+    trail_atr: 2.0               # stop raised to highest high since entry minus this many entry ATRs
+    exit_below_ema: 20
+    time_stop_bars: 180
+  break:                         # HYP-0022
+    hypothesis: HYP-0022
+    high_bars: 30
+    volume_bars: 20              # signal bar volume above the mean of the previous N bars
+    target_atr: 4.0
+    time_stop_bars: 60
+  dip:                           # HYP-0023
+    hypothesis: HYP-0023
+    daily_sma: 50                # last closed daily bar above this average
+    rsi_period: 14
+    rsi_below: 35
+    rsi_lookback: 6              # RSI below the threshold on at least one of the previous N bars
+    ema_period: 8                # first close back above it
+    target_atr: 3.0
+    time_stop_bars: 42
+
 account:
   start_equity: 10000            # USD, paper
 
