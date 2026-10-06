@@ -235,7 +235,7 @@ def _last_jobs(last: dict[str, Any], runs: list[dict[str, Any]]) -> dict[str, An
 def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     """The raw (unsanitized) snapshot body from the desk's state on disk. Reads only; never calls the venue."""
     from wt.ops.alerts import Alerts
-    from wt.ops.heartbeat import HEARTBEAT_DIR, last_runs
+    from wt.ops.heartbeat import last_runs, recent_runs
     from wt.ops.schedule import JOBS
     desk, cfg = desk or DESKS["crypto"], cfg or load_yaml("crypto.yaml")
     pairs, tf = list(cfg["pairs"]), int(cfg["timeframe_min"])
@@ -250,7 +250,7 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
 
     def mine(job: object) -> bool:
         return isinstance(job, str) and job in JOBS and JOBS[job].desk == desk.name
-    runs = [r for r in publish._read_jsonl(HEARTBEAT_DIR / "runs.jsonl") if mine(r.get("job"))]
+    runs = [r for r in recent_runs() if mine(r.get("job"))]
     kill = desk.kill_file
     return {
         "expected_windows": [{"session": "always", "start": (now - dt.timedelta(days=1)).isoformat(),
