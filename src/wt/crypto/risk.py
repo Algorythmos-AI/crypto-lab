@@ -31,6 +31,79 @@ def load_limits(strategy: str = "C") -> Limits:
                   int(c["max_entries_per_day"]), int(c["max_orders_per_day"]), Decimal(str(c["daily_loss_latch"])))
 
 
+@dataclass(frozen=True)
+class SleeveLimits:
+    """Limits of a tournament sleeve (config/risk.yaml, key CT), as shares of the sleeve's own book."""
+    risk_pct: Decimal
+    max_position_pct: Decimal
+    max_exposure_pct: Decimal
+    max_positions: int
+    max_entries_per_day: int
+    max_orders_per_day: int
+    daily_loss_latch_pct: Decimal
+
+
+def load_sleeve_limits(key: str = "CT") -> SleeveLimits:
+    c = load_yaml("risk.yaml")[key]
+    return SleeveLimits(Decimal(str(c["risk_pct"])), Decimal(str(c["max_position_pct"])),
+                        Decimal(str(c["max_exposure_pct"])), int(c["max_positions"]), int(c["max_entries_per_day"]),
+                        int(c["max_orders_per_day"]), Decimal(str(c["daily_loss_latch_pct"])))
+
+
+def sleeve_dir(desk: Desk, sleeve: str) -> Path:
+    return desk.state_dir / "sleeves" / sleeve
+
+
+def size(equity: Decimal, cash: Decimal, price: Decimal, stop: Decimal, fee_pct: float, lim: SleeveLimits) -> Decimal:
+    """Quantity for one trade, before lot rounding: the smallest of the risk rule, the position cap and what the
+    cash can pay for with its fee. Zero when the stop is not below the price."""
+    if price <= 0 or stop >= price:
+        return Decimal(0)
+    by_risk = equity * lim.risk_pct / 100 / (price - stop)
+    by_cap = equity * lim.max_position_pct / 100 / price
+    by_cash = cash / (price * (1 + Decimal(str(fee_pct)) / 100))
+    return max(Decimal(0), min(by_risk, by_cap, by_cash))
+
+
+def update_sleeve_latch(book: Book, day: str, equity: Decimal, folder: Path, lim: SleeveLimits) -> bool:
+    """Write the sleeve's latch when today's realised loss has reached its share of the book. True when set now."""
+    f = folder / "latch"
+    limit = equity * lim.daily_loss_latch_pct / 100
+    if f.exists() or book.realised.get(day, Decimal(0)) > -limit:
+        return False
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(f"{day}: realised {book.realised[day]} reached the daily loss limit {limit:.2f}\n")
+    return True
+
+
+def sleeve_blockers(pair: str, notional: Decimal, equity: Decimal, book: Book, day: str, desk: Desk, folder: Path,
+                    pairs: tuple[str, ...], lim: SleeveLimits) -> list[str]:
+    """Codes of everything that forbids this sleeve's entry; empty = allowed. The desk's kill switch, chain flag
+    and shadow role apply to every sleeve; the latch and the counts are the sleeve's own."""
+    why = []
+    if desk.kill_file.exists():
+        why.append("kill")
+    if (folder / "latch").exists():
+        why.append("latch")
+    if desk.chain_flag.exists():
+        why.append("chain_broken")
+    if os.environ.get("WT_ROLE", "primary") == "shadow":
+        why.append("shadow_role")
+    if pair not in pairs:
+        why.append("not_allowlisted")
+    if pair in book.positions:
+        why.append("already_open")
+    if len(book.positions) >= lim.max_positions:
+        why.append("positions")
+    if book.exposure() + notional > equity * lim.max_exposure_pct / 100:
+        why.append("exposure")
+    if book.entries.get(day, 0) >= lim.max_entries_per_day:
+        why.append("entries_today")
+    if book.orders.get(day, 0) >= lim.max_orders_per_day:
+        why.append("orders_today")
+    return why
+
+
 def latch_file(desk: Desk) -> Path:
     return desk.state_dir / "latch"
 

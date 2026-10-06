@@ -19,6 +19,11 @@ def ema(values: Sequence[float], n: int) -> float | None:
     return e
 
 
+def sma(values: Sequence[float], n: int) -> float | None:
+    """Simple mean of the last n values."""
+    return sum(values[-n:]) / n if n > 0 and len(values) >= n else None
+
+
 def rsi(closes: Sequence[float], n: int = 14) -> float | None:
     """Wilder's RSI. None on a series with no movement at all: 0/0 is not 50."""
     if len(closes) < n + 1:

@@ -39,6 +39,12 @@ class Position:
     stop: Decimal
     target: Decimal
     checked_to: int             # 1-minute bars up to and including this open time have been examined for an exit
+    # Tournament sleeves (DEC-0015). The defaults are what a baseline (HYP-0020) position has, so a book written
+    # before these fields existed loads as it was.
+    sleeve: str = ""
+    atr: Decimal = Decimal(0)   # ATR of the signal bar: the unit the stop and target were set in
+    high: Decimal = Decimal(0)  # highest high since entry, for a trailed stop
+    bar_checked: int = 0        # open time of the last closed strategy bar examined for a bar exit
 
     @property
     def cost(self) -> Decimal:
@@ -75,7 +81,8 @@ class Book:
         for k, p in s["positions"].items():
             b.positions[k] = Position(p["pair"], Decimal(p["qty"]), Decimal(p["entry_price"]), Decimal(p["entry_fee"]),
                                       int(p["entry_t"]), int(p["entry_bar"]), Decimal(p["stop"]), Decimal(p["target"]),
-                                      int(p["checked_to"]))
+                                      int(p["checked_to"]), str(p.get("sleeve", "")), Decimal(p.get("atr", "0")),
+                                      Decimal(p.get("high", "0")), int(p.get("bar_checked", 0)))
         b.realised = {k: Decimal(v) for k, v in s["realised"].items()}
         b.entries, b.orders, b.outbox = dict(s["entries"]), dict(s["orders"]), list(s["outbox"])
         b.meta = {**b.meta, **s.get("meta", {})}
@@ -112,6 +119,26 @@ class Book:
         self.orders[day] = self.orders.get(day, 0) + 1
         return p
 
+    def buy_qty(self, pair: str, qty: Decimal, price: Decimal, info: PairInfo, fee_pct: float, t: int, bar_t: int,
+                stop: Decimal, target: Decimal, sleeve: str, atr: Decimal) -> Position:
+        """A buy the caller has sized and priced (wt.crypto.sleeves): `price` already carries slippage and is on
+        the tick; `stop` and `target` are prices. The same refusals as `buy`."""
+        if pair in self.positions:
+            raise Rejected("already_open")
+        cost = qty * price
+        if qty <= 0 or qty < info.order_min or cost < info.cost_min:
+            raise Rejected("below_minimum")
+        fee = cost * _dec(fee_pct) / 100
+        if cost + fee > self.cash:
+            raise Rejected("insufficient_cash")
+        self.cash -= cost + fee
+        p = Position(pair, qty, price, fee, t, bar_t, stop, target, t - t % 60, sleeve, atr, price, bar_t)
+        self.positions[pair] = p
+        day = utc_day(t)
+        self.entries[day] = self.entries.get(day, 0) + 1
+        self.orders[day] = self.orders.get(day, 0) + 1
+        return p
+
     def sell(self, pair: str, price: float, fee_pct: float, slip_bps: float, t: int) -> dict[str, Any]:
         """Close the whole position. Returns what was realised (after both fees) and its R multiple."""
         p = self.positions.pop(pair)
@@ -138,6 +165,16 @@ class Book:
 
     def note(self, rec: dict[str, Any]) -> None:
         self.outbox.append({"id": uuid.uuid4().hex, **rec})
+
+
+def to_tick(x: Decimal, tick: Decimal, rounding: str = ROUND_DOWN) -> Decimal:
+    """`x` as a whole number of ticks. `quantize(tick)` only fixes the decimal places, which is the same thing
+    for a tick of 0.01 and not for one of 0.05."""
+    return (x / tick).to_integral_value(rounding=rounding) * tick if tick > 0 else x
+
+
+def to_lot(qty: Decimal, lot_decimals: int) -> Decimal:
+    return qty.quantize(Decimal(1).scaleb(-lot_decimals), rounding=ROUND_DOWN)
 
 
 def utc_day(t: float) -> str:

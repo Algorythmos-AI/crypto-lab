@@ -132,6 +132,23 @@ class KrakenPublic:
             raise DataError("Ticker: crossed or empty book")
         return q
 
+    def pair_infos(self, pairs: list[str]) -> dict[str, PairInfo]:
+        """Every online pair of `pairs` in one call, keyed by the name asked for. Kraken keys its answer by its
+        own long name (XXBTZUSD for XBTUSD), so rows are matched on `altname`. A pair that is missing or not
+        online is left out: the caller refuses the entry."""
+        res = self._call("AssetPairs", pair=",".join(pairs))
+        out: dict[str, PairInfo] = {}
+        for key, row in res.items():
+            try:
+                name = str(row.get("altname") or key)
+                if row.get("status") == "online" and (name in pairs or key in pairs):
+                    out[name if name in pairs else key] = PairInfo(
+                        int(row["lot_decimals"]), Decimal(str(row["tick_size"])), Decimal(str(row["ordermin"])),
+                        Decimal(str(row["costmin"])))
+            except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
+                continue
+        return out
+
     def pair_info(self, pair: str) -> PairInfo:
         res = self._call("AssetPairs", pair=pair)
         try:

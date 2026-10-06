@@ -27,14 +27,14 @@ from typing import Any
 from wt.core import ledger
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import features, risk
+from wt.crypto import features, risk, sleeves
 from wt.crypto.book import Book, Position, Rejected, utc_day
 from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
 from wt.crypto.quality import assess
 from wt.crypto.strategy import Params, entry, find_exit, read
 from wt.ops.alerts import Alerts
 
-SEEN_TAIL = 400                         # journal lines checked for an id before an outbox record is appended
+SEEN_TAIL = 2000                        # journal lines checked for an id before an outbox record is appended
 
 
 def config_hash(cfg: dict[str, Any]) -> str:
@@ -113,7 +113,7 @@ def manage_exit(name: str, kraken_pair: str, pos: Position, bars: list[Bar], quo
 
 def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | None = None,
         cfg: dict[str, Any] | None = None, limits: risk.Limits | None = None, alerts: Alerts | None = None) -> int:
-    now = time.time() if now is None else now
+    now, started = time.time() if now is None else now, time.monotonic()
     api, desk, cfg = api or KrakenPublic(), desk or DESKS["crypto"], cfg or load_yaml("crypto.yaml")
     limits, alerts = limits or risk.load_limits(desk.strategy), alerts or Alerts()
     p, costs, qcfg, tf = Params.of(cfg["strategy"]), cfg["costs"], cfg["quality"], int(cfg["timeframe_min"])
@@ -201,6 +201,18 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
     elif not nothing:
         alerts.resolve("crypto:data-stale", "Crypto: market data is back", "The venue answers again.")
     print(f"cycle {_iso(now)}: evaluated {sorted(seen)} failed {sorted(failed)} open {sorted(book.positions)}")
+    if cfg.get("sleeves") and not str(next(iter(failed.values()), "")).startswith("clock:"):
+        # The tournament sleeves (DEC-0015) run after the baseline is saved and journalled, and nothing they do
+        # can change its result: a fault in them is reported and the cycle still ends as the baseline left it.
+        try:
+            s = sleeves.run_all(now, api, desk, cfg, alerts, started, flush)
+            print(f"sleeves: evaluated {s['evaluated']} failed {sorted(s['failed'])} open {s['open']}")
+            alerts.resolve("crypto:sleeves-failed", "Crypto: the tournament sleeves run again", "The fault has cleared.")
+        except Exception as e:  # noqa: BLE001
+            print(f"sleeves failed ({e.__class__.__name__}); the baseline cycle is unaffected", file=sys.stderr)
+            alerts.fire("crypto:sleeves-failed", "Crypto: the tournament sleeves did not run",
+                        f"{e.__class__.__name__} in the sleeves' cycle. The baseline ran. Open sleeve positions "
+                        "are not being watched until this is fixed.", 4)
     return 0
 
 

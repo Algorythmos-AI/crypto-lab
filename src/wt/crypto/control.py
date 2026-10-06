@@ -31,11 +31,14 @@ def _apply(kind: str, desk: Desk) -> int:
         if not free:
             print("Refusing: a crypto bar cycle is running; try again in a few seconds")
             return 2
-        if not target.exists():
+        # The tournament sleeves keep a latch each (DEC-0015); "reset the latch" clears those too.
+        more = sorted((desk.state_dir / "sleeves").glob("*/latch")) if kind == "reset-latch" else []
+        if not target.exists() and not more:
             print(f"The crypto {what} is already off")
             return 0
-        note = target.read_text(errors="replace").strip()[:200]
-        target.unlink()
+        note = "; ".join(f.read_text(errors="replace").strip() for f in [*([target] if target.exists() else []), *more])[:200]
+        for f in [target, *more]:
+            f.unlink(missing_ok=True)
         ledger.append(desk.journal, {"id": uuid.uuid4().hex, "kind": "control", "action": kind,
                                      "t": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "was": note},
                       fsync=True)

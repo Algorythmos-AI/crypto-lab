@@ -31,6 +31,7 @@ from wt.ops.publish import B, I, Map, N, S
 
 SCHEMA_ID = DESKS["crypto"].snapshot_schema
 SCHEMA_VERSION = 1
+CYCLE_JOB, CYCLE_WAIT_S = "crypto", 90.0   # the bar cycle's job lock, and how long a publish waits for it
 SCHEMA_PATH = ROOT / "dashboard" / "src" / "lib" / "crypto.schema.json"
 OUT = STATE_DIR / "dashboard-crypto"
 WINDOW_AHEAD_D = 14                     # the off-host watchdog pages while `now` is inside the published window
@@ -239,7 +240,8 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
     from wt.ops.schedule import JOBS
     desk, cfg = desk or DESKS["crypto"], cfg or load_yaml("crypto.yaml")
     pairs, tf = list(cfg["pairs"]), int(cfg["timeframe_min"])
-    journal = _jsonl(desk.journal)
+    # Rows that name a sleeve belong to the tournament (DEC-0015): everything below describes the baseline.
+    journal = [r for r in _jsonl(desk.journal) if not r.get("sleeve")]
     obs = observations(desk, now)
     book = Book.load(desk.state_dir / "book.json", Decimal(str(cfg["account"]["start_equity"])))
     limits = risk.load_limits(desk.strategy)
@@ -327,6 +329,10 @@ def main(argv: list[str] | None = None) -> int:
         if not got:
             print("another crypto publish is still running; not starting a second one")
             return 0
+        # A bar cycle that is still running has not saved its books yet: wait for it rather than publish half
+        # of it. After the wait the snapshot goes out whatever happened; it only reads.
+        with job_lock(CYCLE_JOB, wait_s=CYCLE_WAIT_S, poll_s=2.0):
+            pass
         return _publish(a)
 
 
