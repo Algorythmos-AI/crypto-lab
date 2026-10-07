@@ -107,7 +107,10 @@ def test_the_real_scorer_answers_with_the_standard_library_alone_for_a_logistic_
 ])
 def test_every_way_the_scorer_can_fail_ends_in_a_reason_and_no_scores(desk, tmp_path, body, why):
     register(desk)
-    got = scorer.score([{"atr_pct": 1.0}, {"atr_pct": 2.0}], desk, timeout_s=1.0, python=fake_python(tmp_path, body), root=ROOT)
+    # One second is the limit only where the limit is the point: on a busy machine an interpreter can take longer
+    # than that to start, and the other cases would then read as timeouts.
+    limit = 1.0 if why == "timeout" else 20.0
+    got = scorer.score([{"atr_pct": 1.0}, {"atr_pct": 2.0}], desk, timeout_s=limit, python=fake_python(tmp_path, body), root=ROOT)
     assert got == (None, why)
 
 
@@ -129,18 +132,25 @@ def test_a_promoted_model_can_only_skip_or_halve():
     assert max(s.factor(i) for i in range(6)) <= 1.0
 
 
+def _fake_uv(tmp_path, calls, fail_on=None):
+    def run(*cmd, check=True, timeout=600):
+        calls.append(cmd[1:3])
+        if cmd[1:3] == fail_on:
+            raise RuntimeError("no network")
+        if cmd[1] == "venv":
+            (Path(cmd[-1]) / "bin").mkdir(parents=True)
+            (Path(cmd[-1]) / "bin" / "python").write_text("")
+        if cmd[1] == "pip":
+            (Path(cmd[cmd.index("--python") + 1]).parents[1] / "built-from").write_text(Path(cmd[-1]).read_text())
+    return run
+
+
 def test_the_ml_environment_syncs_only_when_its_lock_changes_and_never_fails_a_deploy(tmp_path, monkeypatch):
     calls: list[tuple] = []
     monkeypatch.setattr(deploy, "ROOT", tmp_path)
     monkeypatch.setattr(deploy, "Alerts", lambda: type("A", (), {"fire": lambda *a, **k: calls.append(("fire", a[1])),
                                                                 "resolve": lambda *a, **k: None})())
-
-    def run(*cmd, check=True, timeout=600):
-        calls.append(cmd[1:3])
-        if cmd[1] == "venv":
-            (tmp_path / ".venv-ml" / "bin").mkdir(parents=True)
-            (tmp_path / ".venv-ml" / "bin" / "python").write_text("")
-    monkeypatch.setattr(deploy, "_run", run)
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
     assert deploy.sync_ml() == "none" and calls == []                       # a checkout from before the lock existed
     (tmp_path / "requirements-ml.lock.txt").write_text("lightgbm==4.7.0 --hash=sha256:aa\n")
     assert deploy.sync_ml() == "synced" and calls == [("venv", "--quiet"), ("pip", "sync")]
@@ -151,6 +161,42 @@ def test_the_ml_environment_syncs_only_when_its_lock_changes_and_never_fails_a_d
     (tmp_path / "requirements-ml.lock.txt").write_text("lightgbm==4.8.0 --hash=sha256:bb\n")
     monkeypatch.setattr(deploy, "_run", lambda *c, **k: (_ for _ in ()).throw(RuntimeError("no network")))
     assert deploy.sync_ml() == "failed" and calls == [("fire", "deploy-ml")]
+
+
+def test_a_new_ml_environment_is_built_beside_the_live_one_and_a_failed_build_leaves_it_untouched(tmp_path, monkeypatch):
+    calls: list[tuple] = []
+    monkeypatch.setattr(deploy, "ROOT", tmp_path)
+    monkeypatch.setattr(deploy, "Alerts", lambda: type("A", (), {"fire": lambda *a, **k: calls.append(("fire", a[1])),
+                                                                "resolve": lambda *a, **k: None})())
+    lock, live = tmp_path / "requirements-ml.lock.txt", tmp_path / ".venv-ml"
+    lock.write_text("lightgbm==4.7.0 --hash=sha256:aa\n")
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
+    assert deploy.sync_ml() == "synced"
+    old_stamp = (live / ".lock-sha256").read_text()
+    lock.write_text("lightgbm==4.8.0 --hash=sha256:bb\n")
+    # The install dies half way: the scorer still has the whole old environment, stamp and all.
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls, fail_on=("pip", "sync")))
+    assert deploy.sync_ml() == "failed"
+    assert (live / "bin" / "python").exists() and (live / ".lock-sha256").read_text() == old_stamp
+    assert "4.7.0" in (live / "built-from").read_text()
+    assert not (tmp_path / ".venv-ml.next").exists()
+    # The next deploy builds it whole and swaps it in; nothing is left beside it.
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
+    assert deploy.sync_ml() == "synced" and "4.8.0" in (live / "built-from").read_text()
+    assert not (tmp_path / ".venv-ml.next").exists() and not (tmp_path / ".venv-ml.prev").exists()
+    for name in (".venv-ml.next/", ".venv-ml.prev/"):
+        assert name in (ROOT / ".gitignore").read_text().split()
+
+
+def test_the_ml_lock_is_part_of_the_checked_code_and_of_the_audit():
+    import yaml
+
+    from wt.ops import ci, preflight
+    assert "requirements-ml.lock.txt" in preflight.CODE_PATHS
+    assert "ml" in ci.DEFAULT_REQUIRED
+    audit = yaml.safe_load((ROOT / ".github/workflows/security.yml").read_text())["jobs"]["dependencies"]["steps"]
+    assert any("pip-audit" in str(s.get("run", "")) and "requirements-ml.lock.txt" in str(s.get("run", "")) for s in audit)
+    assert "x86_64-unknown-linux-gnu" in (ROOT / "Makefile").read_text()       # the lock is compiled for the host
 
 
 def test_the_ml_environment_is_ignored_by_git_and_has_its_own_ci_job():
