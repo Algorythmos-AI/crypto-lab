@@ -1,0 +1,10 @@
+# The machine-learning environment (DEC-0016). Separate from the trading environment on purpose: the deploy syncs
+# requirements.lock.txt into .venv and removes anything else, and nothing the trading jobs import lives here.
+# The learning job and the scorer run in .venv-ml. Compile with:
+#   uv pip compile --python-version 3.12 --generate-hashes requirements-ml.in -o requirements-ml.lock.txt
+numpy==2.5.3
+scipy==1.18.1
+pyyaml==6.0.3
+python-dotenv==1.2.3            # wt.core.config, shared with the trading environment
+scikit-learn==1.9.1
+lightgbm==4.7.0
