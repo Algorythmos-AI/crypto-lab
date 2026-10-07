@@ -93,6 +93,20 @@ ALLOW: dict[str, Any] = {
                               "ci_low": N, "ci_high": N, "profit_factor": N, "dsr": N, "control_p": N,
                               "max_drawdown_pct": N, "failed_on": [S], "admitted": S, "retired": S,
                               "retired_why": S}]},
+    # ---- the model (DEC-0016, 3 and 4): what was trained, what is in force, and the tests it has faced ----
+    "learning": {"switch": S, "lineages_started": I,
+                 "model": {"version": S, "lineage": S, "state": S, "trained_at": S, "checkpoints": I, "max_checkpoints": I,
+                           "checkpoint_signals": I, "finished": I, "next_checkpoint": I, "score_psi": N, "drifted": B,
+                           "drift_inputs": [S],
+                           "looks": [{"checkpoint": I, "signals": I, "spread": N, "lower": N, "brier": N,
+                                      "brier_base": N, "passed": B, "t": S}]},
+                 "training": {"t": S, "chosen": S, "decision": S, "examples": I, "pairs": I, "effective_n": N,
+                              "win_rate": N, "mean_r": N, "attempt": I,
+                              "models": [{"name": S, "settings": S, "log_loss": N, "kept": I, "kept_mean_r": N,
+                                          "dropped": I, "dropped_mean_r": N, "spread": N, "ci_low": N, "ci_high": N}],
+                              "leans_on": [{"input": S, "weight": N}]},
+                 "signals": {"recorded": I, "finished": I, "open": I, "win_rate": N, "mean_r": N, "scored": I,
+                             "kept": I, "kept_mean_r": N, "skipped": I, "skipped_mean_r": N}},
 }
 HISTOGRAMS = ("rsi", "atr_pct", "vwap_distance_pct", "volume_ratio")
 
@@ -283,8 +297,10 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
     fixed = exit_r(rows)
     # The registered sleeves, then the challengers the bar cycle runs (DEC-0016, 5): each passed gate C1 before
     # its first trade. (name, what it trades, stage, bar length, config)
-    shown = [(n, str(sc[n].get("hypothesis")), engine.STAGE, int(sc["common"]["timeframe_min"]), engine.sleeve_hash(cfg, n))
-             for n in rules.NAMES if n in sc]
+    # A registered sleeve is shown with the verdict of its own gate C1 once it has one (DEC-0016, 1).
+    c1 = (cfg.get("learning") or {}).get("c1") or {}
+    shown = [(n, str(sc[n].get("hypothesis")), str(c1[n]) if c1.get(n) in ("passed", "failed") else engine.STAGE,
+              int(sc["common"]["timeframe_min"]), engine.sleeve_hash(cfg, n)) for n in rules.NAMES if n in sc]
     try:
         from wt.crypto import challengers
         record = challengers.state_of(rows)
@@ -387,6 +403,65 @@ def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]
             "drawn_this_week": sum(1 for r in state.values() if r.get("week") == week), "list": out}
 
 
+def _json(path: Path) -> dict[str, Any]:
+    try:
+        got = json.loads(path.read_text())
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def learning_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The model as the owner reads it: the last training's comparison, the model in force with the checkpoints it
+    has faced, and what the recorded signals say. None when the config has no learning section."""
+    from wt.crypto import promotion
+    lg = cfg.get("learning") or {}
+    if not lg.get("promotion"):
+        return None
+    models = promotion.models_dir(desk)
+    p, state, last = promotion.pointer(desk), promotion.load_state(desk), _json(models / "last_train.json")
+    model = None
+    if p is not None:
+        mine = state if state.get("lineage") == p.lineage else {}
+        d = mine.get("drift") or {}
+        model = {"version": p.version, "lineage": p.lineage, "state": mine.get("state") or "shadow", "trained_at": p.trained_at,
+                 "checkpoints": mine.get("checkpoints", 0), "max_checkpoints": int(lg["promotion"]["max_checkpoints"]),
+                 "checkpoint_signals": int(lg["promotion"]["checkpoint_signals"]), "finished": mine.get("finished", 0),
+                 "next_checkpoint": mine.get("next_checkpoint"), "score_psi": d.get("score_psi"), "drifted": d.get("drifted"),
+                 "drift_inputs": sorted(d.get("inputs") or {}),
+                 "looks": [{k: look.get(k) for k in ("checkpoint", "signals", "spread", "lower", "brier", "brier_base", "passed", "t")}
+                           for look in (mine.get("looks") or [])[-6:]]}
+    training = None
+    if last:
+        def line(name: str, d: dict[str, Any]) -> dict[str, Any]:
+            ci = d.get("spread_ci") or [None, None]
+            return {"name": name, "settings": ", ".join(f"{k}={v}" for k, v in sorted((d.get("settings") or {}).items())) or None,
+                    "log_loss": d.get("log_loss"), "kept": d.get("kept"), "kept_mean_r": d.get("kept_mean_r"),
+                    "dropped": d.get("dropped"), "dropped_mean_r": d.get("dropped_mean_r"), "spread": d.get("spread"),
+                    "ci_low": ci[0], "ci_high": ci[1]}
+        training = {**{k: last.get(k) for k in ("t", "chosen", "decision", "examples", "pairs", "effective_n", "win_rate",
+                                               "mean_r", "attempt")},
+                    "models": [line("m0", last.get("m0") or {}), *(line(k, v) for k, v in sorted((last.get("best") or {}).items()))],
+                    "leans_on": [{"input": d.get("input"), "weight": d.get("weight", d.get("gain_share"))}
+                                 for d in (last.get("importance") or [])[:8] if isinstance(d, dict)]}
+    recorded = {r.get("sid"): r for r in rows if r.get("kind") == "signal"}
+    done = {r.get("sid"): r for r in rows if r.get("kind") == "outcome" and r.get("sid") in recorded and _f(r.get("r")) is not None}
+    rs = [float(o["r"]) for o in done.values()]
+    scored = [(recorded[sid], float(o["r"])) for sid, o in done.items()
+              if p is not None and recorded[sid].get("lineage") == p.lineage and _f(recorded[sid].get("score")) is not None]
+    kept = [r for s, r in scored if float(s["score"]) >= float(s.get("cutoff", 0.0))]
+    skipped = [r for s, r in scored if float(s["score"]) < float(s.get("cutoff", 0.0))]
+    # How many different models have been put in shadow so far (DEC-0019): each one is another chance for luck.
+    started = len(state.get("past") or {}) + (1 if state.get("lineage") else 0)
+    return {"switch": "off" if risk.learning_file(desk).exists() else "on", "lineages_started": started,
+            "model": model, "training": training,
+            "signals": {"recorded": len(recorded), "finished": len(done), "open": len(recorded) - len(done),
+                        "win_rate": sum(r > 0 for r in rs) / len(rs) if rs else None,
+                        "mean_r": statistics.fmean(rs) if rs else None, "scored": len(scored),
+                        "kept": len(kept), "kept_mean_r": statistics.fmean(kept) if kept else None,
+                        "skipped": len(skipped), "skipped_mean_r": statistics.fmean(skipped) if skipped else None}}
+
+
 PUBLISH_JOB = "dashboard-crypto"
 
 
@@ -462,6 +537,7 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
                               if desk_of_alert(k) == desk.name]},
         "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now), []),
         "challengers": _guarded(lambda: challengers_view(desk, cfg, every, now), None),
+        "learning": _guarded(lambda: learning_view(desk, cfg, every), None),
     }
 
 

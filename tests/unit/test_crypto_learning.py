@@ -508,3 +508,41 @@ def test_the_learning_job_runs_daily_after_the_challengers_and_a_deploy_waits_fo
     assert job.runtime_max_h * 60 > job.deadline_min > learn.TRAIN_TIMEOUT_S / 60
     assert "OnCalendar=Mon..Sun 04:30 America/New_York" in units.timer(job)
     assert "MemoryMax=2G" in units.service(job, Path("/r"))
+
+
+# ---------------------------------------------------------------- the dashboard's section
+def test_the_snapshot_says_what_was_trained_what_is_in_force_and_how_its_picks_did(crypto):  # noqa: F811
+    from wt.crypto import snapshot
+    d, a, _ = crypto
+    empty = snapshot.learning_view(d, CFG, [])
+    assert empty == {"switch": "on", "lineages_started": 0, "model": None, "training": None,
+                     "signals": {"recorded": 0, "finished": 0, "open": 0, "win_rate": None, "mean_r": None, "scored": 0,
+                                 "kept": 0, "kept_mean_r": None, "skipped": 0, "skipped_mean_r": None}}
+    assert snapshot.learning_view(d, {**CFG, "learning": {}}, []) is None
+    point(d)
+    rows = signals_with_outcomes(60, False) + [{"kind": "signal", "sid": "open", "sleeve": "trend", "lineage": LINEAGE, "score": 0.9}]
+    judged(d, rows)
+    (promotion.models_dir(d) / "last_train.json").write_text(json.dumps({
+        "t": iso(NOW), "chosen": "m1", "decision": "DEC-0018", "examples": 9000, "pairs": 30, "effective_n": 2000.5,
+        "win_rate": 0.34, "mean_r": -0.09, "attempt": 3, "m0": {"log_loss": 0.59, "kept": 7000, "kept_mean_r": -0.14},
+        "best": {"m1": {"settings": {"C": 1}, "log_loss": 0.58, "kept": 4000, "kept_mean_r": -0.1, "dropped": 3000,
+                        "dropped_mean_r": -0.2, "spread": 0.1, "spread_ci": [-0.1, 0.3]}},
+        "importance": [{"input": "rsi", "weight": 0.4}, {"input": "volume_ratio", "gain_share": 0.2}]}))
+    view = snapshot.learning_view(d, CFG, rows)
+    m = view["model"]
+    assert (m["version"], m["lineage"], m["state"], m["checkpoints"], m["finished"], m["next_checkpoint"]) == ("m1-a", LINEAGE, "shadow", 1, 60, 120)
+    assert (m["max_checkpoints"], m["checkpoint_signals"]) == (6, 60) and len(m["looks"]) == 1 and m["looks"][0]["passed"] is False
+    assert m["drifted"] is False and m["score_psi"] is not None and view["lineages_started"] == 1
+    t = view["training"]
+    assert [x["name"] for x in t["models"]] == ["m0", "m1"] and t["models"][1]["settings"] == "C=1"
+    assert (t["models"][1]["ci_low"], t["models"][1]["ci_high"], t["models"][0]["settings"]) == (-0.1, 0.3, None)
+    assert t["leans_on"] == [{"input": "rsi", "weight": 0.4}, {"input": "volume_ratio", "weight": 0.2}]
+    g = view["signals"]
+    assert (g["recorded"], g["finished"], g["open"], g["scored"]) == (61, 60, 1, 60) and g["kept"] + g["skipped"] == 60
+    risk.learning_file(d).write_text("off\n")
+    assert snapshot.learning_view(d, CFG, rows)["switch"] == "off"
+    # The whole section passes the published contract, and nothing was written by reading it.
+    before = sorted(p.name for p in promotion.models_dir(d).iterdir())
+    clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply({"learning": snapshot.ALLOW["learning"]}, {"learning": view})
+    assert clean["learning"]["model"]["lineage"] == LINEAGE and clean["learning"]["training"]["models"][1]["name"] == "m1"
+    assert sorted(p.name for p in promotion.models_dir(d).iterdir()) == before

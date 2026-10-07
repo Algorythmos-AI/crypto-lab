@@ -137,6 +137,47 @@ def sleeves_fixture(state: Path, journal: Path, cfg: dict[str, Any], rng: random
         book.save(folder / "book.json")
     (state / "sleeves" / "data.json").write_text(json.dumps({"marks": marks}))
     challengers_fixture(journal, end)
+    learning_fixture(state, journal, end)
+
+
+def learning_fixture(state: Path, journal: Path, end: int) -> None:
+    """A model in shadow as the learning job leaves it: registered a week ago, one checkpoint looked at and not
+    passed, with the signals it scored and their outcomes. Invented figures."""
+    models = state / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    lineage, version = "m1:C=0.1", "m1-20260925-fixture0"
+    (models / "current.json").write_text(json.dumps({"version": version, "lineage": lineage, "kind": "logistic",
+                                                     "trained_at": _iso(end - 7 * 86_400), "inputs": [], "sha256": "",
+                                                     "cutoff": 0.31, "half_below": 0.36}))
+    (models / "promotion.json").write_text(json.dumps({
+        "lineage": lineage, "version": version, "state": "shadow", "checkpoints": 1, "finished": 74, "next_checkpoint": 120,
+        "drift": {"score_psi": 0.062, "inputs": {}, "drifted": False},
+        "looks": [{"checkpoint": 1, "signals": 60, "spread": 0.142, "lower": -0.318, "alpha": 0.05 / 6, "brier": 0.2231,
+                   "brier_base": 0.2254, "passed": False, "t": _iso(end - 2 * 86_400)}]}))
+    fold = {"log_loss": 0.5914, "log_loss_se": 0.0225, "kept": 7408, "kept_mean_r": -0.147, "dropped": 0,
+            "dropped_mean_r": None, "spread": None, "spread_ci": None}
+    (models / "last_train.json").write_text(json.dumps({
+        "t": _iso(end - 7 * 86_400), "chosen": "m1", "decision": "DEC-0018", "examples": 8873, "pairs": 30, "effective_n": 2005.8,
+        "win_rate": 0.344, "mean_r": -0.094, "attempt": 3, "m0": fold,
+        "best": {"m1": {**fold, "settings": {"C": 0.1}, "log_loss": 0.5868, "kept": 4313, "kept_mean_r": -0.103, "dropped": 3095,
+                        "dropped_mean_r": -0.207, "spread": 0.104, "spread_ci": [-0.113, 0.32]},
+                 "m2": {**fold, "settings": {"n_estimators": 300, "num_leaves": 4}, "log_loss": 0.6077, "kept": 4666,
+                        "kept_mean_r": -0.182, "dropped": 2742, "dropped_mean_r": -0.086, "spread": -0.096,
+                        "spread_ci": [-0.346, 0.128]}},
+        "importance": [{"input": "btc_above_sma50", "weight": 0.31}, {"input": "stop_pct", "weight": -0.22},
+                       {"input": "volume_ratio", "weight": 0.12}]}))
+    plan = [("trend", "AVAX/USD", 0.42, 1.9), ("break", "AVAX/USD", 0.38, 2.0), ("trend", "ADA/USD", 0.27, -1.0),
+            ("break", "SOL/USD", 0.33, -1.0), ("dip", "LINK/USD", 0.24, 0.6), ("trend", "XRP/USD", 0.44, None)]
+    for k, (sleeve, pair, score, r) in enumerate(plan):
+        t = end - 14_400 * (30 - 4 * k)
+        sid = f"{sleeve}|{pair}|{t - 14_400}"
+        ledger.append(journal, {"id": f"sig{k}", "kind": "signal", "sid": sid, "sleeve": sleeve, "pair": pair, "bar": t - 14_400,
+                                "t": _iso(t + 10), "taken": True, "why": [], "score": score, "cutoff": 0.31, "half_below": 0.36,
+                                "model": version, "lineage": lineage, "inputs": {}})
+        if r is not None:
+            ledger.append(journal, {"id": f"out{k}", "kind": "outcome", "sid": sid, "sleeve": sleeve, "pair": pair,
+                                    "t": _iso(t + 86_400), "exit_t": _iso(t + 50_000), "reason": "target" if r > 0 else "stop",
+                                    "r": r})
 
 
 def challengers_fixture(journal: Path, end: int) -> None:

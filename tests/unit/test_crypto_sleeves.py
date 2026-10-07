@@ -472,7 +472,7 @@ def test_the_snapshot_reports_each_sleeve_from_its_own_book_and_values_positions
     when = dt.datetime.fromtimestamp(v.now, dt.UTC)
     snap = snapshot.collect(when, desk=d, cfg=CFG)
     by = {s["name"]: s for s in snap["sleeves"]}
-    assert list(by) == ["trend", "break", "dip"] and all(s["stage"] == "incubation" for s in by.values())
+    assert list(by) == ["trend", "break", "dip"] and all(s["stage"] == "failed" for s in by.values())   # each shown with its own gate C1 verdict (DEC-0016, 1)
     pos = by["break"]["positions"][0]
     entry = rows_of(d, "break", "entry")[0]
     assert pos["pair"] == "BTC/USD" and pos["entry_price"] == float(entry["price"]) and pos["mark"] == 103.95

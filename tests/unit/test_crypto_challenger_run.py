@@ -203,7 +203,7 @@ def test_one_that_passes_trades_its_own_book_beside_the_registered_sleeves(crypt
     view = snapshot.sleeves_view(d, CFG, journal(d), dt.datetime.fromtimestamp(v.now, dt.UTC))
     assert [s["name"] for s in view] == ["trend", "break", "dip", cid]
     assert view[3]["stage"] == "passed" and view[3]["strategy"].startswith("Challenger: break rule on 4-hour bars")
-    assert len(view[3]["positions"]) == 1 and view[1]["stage"] == "incubation"
+    assert len(view[3]["positions"]) == 1 and view[1]["stage"] == "failed"         # shown with its own verdict (DEC-0016, 1)
     # The baseline's rows are the ones with no sleeve: none of the challenger's is among them.
     assert not [r for r in journal(d) if not r.get("sleeve") and r["kind"] in ("challenger", "entry")]
 
