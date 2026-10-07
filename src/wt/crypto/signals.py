@@ -61,7 +61,8 @@ def inputs(bars: Sequence[Bar], price: float, stop: float, atr: float, spread_pc
 
 def outcome(sleeve: str, price: float, stop: float, target: float | None, atr: float, signal_bar: int,
             bars: Sequence[Bar], fine: Sequence[Bar], c: rules.Common, p: dict[str, Any], costs: dict[str, Any],
-            fine_s: int) -> dict[str, Any] | None:
+            fine_s: int, *, after: int | None = None, entry_fee_pct: float | None = None,
+            target_fee_pct: float | None = None) -> dict[str, Any] | None:
     """Follow one signal, entered at `price` when its bar closed, until the sleeve's rules take it out.
 
     `bars` are the strategy bars (they may start before the signal bar: the trend exit needs their history) and
@@ -71,6 +72,10 @@ def outcome(sleeve: str, price: float, stop: float, target: float | None, atr: f
 
     R is the result per unit, after the fee on both sides and slippage on a market exit, over the distance from
     the entry to the stop the trade opened with.
+
+    The keyword arguments are for an entry that is not the desk's market order (`limit_outcome`): `after` is the
+    open time of the fine bar the entry was filled in (only later fine bars are examined), and the two fees
+    replace the taker fee on the entry and on an exit at the target. Without them nothing changes.
     """
     tf_s, unit = c.timeframe_min * 60, price - stop
     if unit <= 0:
@@ -78,11 +83,18 @@ def outcome(sleeve: str, price: float, stop: float, target: float | None, atr: f
     fee, slip = float(costs["taker_fee_pct"]) / 100, float(costs["slippage_bps"]) / 10_000
     level, high = stop, price
     checked = signal_bar + tf_s - fine_s                    # the fine bar that opens at the signal bar's close is first
+    if after is not None:
+        checked = after
     top = float("inf") if target is None else target
 
     def done(reason: str, px: float, t: int, market_exit: bool) -> dict[str, Any]:
         out = px * (1 - slip) if market_exit else px
-        net = out - price - fee * (price + out)
+        if entry_fee_pct is None and target_fee_pct is None:
+            net = out - price - fee * (price + out)
+        else:
+            fee_in = fee if entry_fee_pct is None else entry_fee_pct / 100
+            fee_out = fee if market_exit or target_fee_pct is None else target_fee_pct / 100
+            net = out - price - fee_in * price - fee_out * out
         return {"reason": reason, "exit_t": t, "exit_price": round(out, 8), "r": round(net / unit, 4),
                 "net_pct": round(net / price * 100, 4), "held_bars": max(0, (t - signal_bar - tf_s) // tf_s)}
 
@@ -100,3 +112,42 @@ def outcome(sleeve: str, price: float, stop: float, target: float | None, atr: f
         if reason is not None:
             return done(reason, b.c, close, True)
     return None
+
+
+def limit_outcome(sleeve: str, limit: float, atr: float, signal_bar: int, bars: Sequence[Bar], fine: Sequence[Bar],
+                  c: rules.Common, p: dict[str, Any], costs: dict[str, Any], fine_s: int, maker_fee_pct: float,
+                  wait_bars: int = 1) -> dict[str, Any] | None:
+    """A signal entered by a buy limit resting at `limit` from the signal bar's close (DEC-0020), followed to its
+    outcome. A study of the registered rules' signals; the desk does not enter this way.
+
+    - Filled at `limit`, with no slippage, by the first traded fine bar within `wait_bars` strategy bars whose low
+      is below it. A touch does not fill. No such bar: `{"filled": False}`, a missed signal.
+    - The stop and target are the sleeve's own, from the fill price and the signal's ATR; a stop distance the
+      sleeve would skip gives `{"filled": False, "skipped": reason}`.
+    - If the fill bar's own low reaches the stop, the trade is stopped out in it. A target is never credited in
+      the fill bar: its high may have come before the fill.
+    - Afterwards it is `outcome`, with the maker fee on the entry and on an exit at the target.
+
+    None while the fill window or the outcome is not yet covered by the bars given.
+    """
+    tf_s = c.timeframe_min * 60
+    start, end = signal_bar + tf_s, signal_bar + tf_s + wait_bars * tf_s
+    window = [f for f in fine if start <= f.t < end]
+    hit = next((f for f in window if f.traded and f.l < limit), None)
+    if hit is None:
+        covered = bool(fine) and fine[-1].t + fine_s >= end
+        return {"filled": False} if covered else None
+    stop, target, skip = rules.levels(limit, atr, c, p)
+    if skip is not None:
+        return {"filled": False, "skipped": skip}
+    if hit.l <= stop:
+        fee, slip = float(costs["taker_fee_pct"]) / 100, float(costs["slippage_bps"]) / 10_000
+        out = min(stop, hit.o) * (1 - slip)
+        net = out - limit - maker_fee_pct / 100 * limit - fee * out
+        res: dict[str, Any] | None = {"reason": "stop", "exit_t": hit.t + fine_s, "exit_price": round(out, 8),
+                                      "r": round(net / (limit - stop), 4), "net_pct": round(net / limit * 100, 4),
+                                      "held_bars": 0}
+    else:
+        res = outcome(sleeve, limit, stop, target, atr, signal_bar, bars, fine, c, p, costs, fine_s, after=hit.t,
+                      entry_fee_pct=maker_fee_pct, target_fee_pct=maker_fee_pct)
+    return None if res is None else {**res, "filled": True, "fill_t": hit.t + fine_s, "price": limit, "stop": stop}

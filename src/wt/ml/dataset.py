@@ -37,14 +37,21 @@ class Example:
         return int(self.r > 0)
 
 
-def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: int) -> list[Example]:
-    """Every signal in [start, end) on every pair of `hourly`, oldest first. A signal whose outcome is not known
-    by the end of the data is left out: it has no label yet.
+@dataclass(frozen=True)
+class Scan:
+    """Every signal of the registered rules over a history, with the series it was found on."""
+    found: list[tuple[str, str, int, int, float, float, float | None, float]]   # sleeve, pair, bar index, close time,
+    fired: dict[tuple[str, int], int]                                           # price, stop, target, ATR
+    h4: dict[str, list[Bar]]
+    d1: dict[str, list[Bar]]
+    d1_close: dict[str, list[int]]
+    grids: dict[str, list[Bar]]
+    fine_t: dict[str, list[int]]
 
-    `breadth` is what the desk records (`wt.crypto.sleeves.finish`): how many of the *traded* pairs met the
-    sleeve's rule on that bar, whether or not their stop distance let them trade. A pair used for training only
-    is never counted, so the input means the same thing in history as it does live; on such a pair's own signal
-    it can be 0, which a live signal never sees."""
+
+def scan(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: int) -> Scan:
+    """The signals in [start, end) on every pair of `hourly`, with a market entry's levels, and how many of the
+    traded pairs fired with each. One scan for the training set and for any study of the same signals."""
     sc = cfg["sleeves"]
     c = rules.Common.of(sc["common"])
     tf_s, daily_s = c.timeframe_min * 60, c.daily_min * 60
@@ -79,6 +86,23 @@ def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: in
                 stop, target, skip = rules.levels(price, atr, c, sc[n])
                 if skip is None:
                     found.append((n, pair, i, close, price, stop, target, atr))
+    return Scan(found, fired, h4, d1, d1_close, grids, fine_t)
+
+
+def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: int) -> list[Example]:
+    """Every signal in [start, end) on every pair of `hourly`, oldest first. A signal whose outcome is not known
+    by the end of the data is left out: it has no label yet.
+
+    `breadth` is what the desk records (`wt.crypto.sleeves.finish`): how many of the *traded* pairs met the
+    sleeve's rule on that bar, whether or not their stop distance let them trade. A pair used for training only
+    is never counted, so the input means the same thing in history as it does live; on such a pair's own signal
+    it can be 0, which a live signal never sees."""
+    sc = cfg["sleeves"]
+    c = rules.Common.of(sc["common"])
+    tf_s = c.timeframe_min * 60
+    got = scan(cfg, hourly, start, end)
+    found, fired, h4, d1, d1_close, grids, fine_t = (got.found, got.fired, got.h4, got.d1, got.d1_close, got.grids,
+                                                     got.fine_t)
     btc = d1.get("BTC/USD")
     out: list[Example] = []
     for n, pair, i, close, price, stop, target, atr in found:

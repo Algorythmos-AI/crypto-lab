@@ -1,0 +1,440 @@
+{
+ "confirmation_of": null,
+ "data_hash": "3a556ccdfce9996a",
+ "decision": "DEC-0020",
+ "end": 1791345600,
+ "fee_sets": {
+  "first_tier": {
+   "maker_fee_pct": 0.4,
+   "slip_mult": 1.0,
+   "taker_fee_pct": 0.8
+  },
+  "primary": {
+   "maker_fee_pct": 0.22,
+   "slip_mult": 1.0,
+   "taker_fee_pct": 0.4
+  },
+  "stress": {
+   "maker_fee_pct": 0.22,
+   "slip_mult": 1.5,
+   "taker_fee_pct": 0.4
+  }
+ },
+ "fees": {
+  "first_tier": {
+   "break": {
+    "filled": 1229,
+    "limit": {
+     "ci": [
+      -0.3454,
+      0.0317
+     ],
+     "mean_r": -0.1525,
+     "n": 1229,
+     "win_rate": 0.3784
+    },
+    "market": {
+     "ci": [
+      -0.4761,
+      -0.1135
+     ],
+     "mean_r": -0.296,
+     "n": 1252,
+     "win_rate": 0.3778
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.4885,
+      -0.1335
+     ],
+     "mean_r": -0.3068,
+     "n": 1229,
+     "win_rate": 0.3743
+    },
+    "market_of_missed": {
+     "ci": [
+      -0.3624,
+      0.9363
+     ],
+     "mean_r": 0.2848,
+     "n": 23,
+     "win_rate": 0.5652
+    },
+    "missed": 23,
+    "signals": 1252,
+    "skipped": 0
+   },
+   "dip": {
+    "filled": 126,
+    "limit": {
+     "ci": [
+      -0.6649,
+      0.0498
+     ],
+     "mean_r": -0.3068,
+     "n": 126,
+     "win_rate": 0.3889
+    },
+    "market": {
+     "ci": [
+      -0.8008,
+      -0.1098
+     ],
+     "mean_r": -0.4544,
+     "n": 127,
+     "win_rate": 0.3858
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.8166,
+      -0.1188
+     ],
+     "mean_r": -0.4675,
+     "n": 126,
+     "win_rate": 0.381
+    },
+    "market_of_missed": {
+     "ci": null,
+     "mean_r": 1.1934,
+     "n": 1,
+     "win_rate": 1.0
+    },
+    "missed": 1,
+    "signals": 127,
+    "skipped": 0
+   },
+   "trend": {
+    "filled": 1253,
+    "limit": {
+     "ci": [
+      -0.3717,
+      -0.0002
+     ],
+     "mean_r": -0.1846,
+     "n": 1253,
+     "win_rate": 0.3089
+    },
+    "market": {
+     "ci": [
+      -0.4817,
+      -0.1081
+     ],
+     "mean_r": -0.2955,
+     "n": 1274,
+     "win_rate": 0.2786
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.4982,
+      -0.1218
+     ],
+     "mean_r": -0.3062,
+     "n": 1253,
+     "win_rate": 0.2745
+    },
+    "market_of_missed": {
+     "ci": [
+      -0.1542,
+      0.9884
+     ],
+     "mean_r": 0.3433,
+     "n": 21,
+     "win_rate": 0.5238
+    },
+    "missed": 21,
+    "signals": 1274,
+    "skipped": 0
+   }
+  },
+  "primary": {
+   "break": {
+    "filled": 1229,
+    "limit": {
+     "ci": [
+      -0.2118,
+      0.1578
+     ],
+     "mean_r": -0.0236,
+     "n": 1229,
+     "win_rate": 0.3816
+    },
+    "market": {
+     "ci": [
+      -0.2685,
+      0.0939
+     ],
+     "mean_r": -0.0878,
+     "n": 1252,
+     "win_rate": 0.381
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.2793,
+      0.0749
+     ],
+     "mean_r": -0.0986,
+     "n": 1229,
+     "win_rate": 0.3775
+    },
+    "market_of_missed": {
+     "ci": [
+      -0.163,
+      1.1369
+     ],
+     "mean_r": 0.4879,
+     "n": 23,
+     "win_rate": 0.5652
+    },
+    "missed": 23,
+    "signals": 1252,
+    "skipped": 0
+   },
+   "dip": {
+    "filled": 126,
+    "limit": {
+     "ci": [
+      -0.5301,
+      0.1719
+     ],
+     "mean_r": -0.1788,
+     "n": 126,
+     "win_rate": 0.3889
+    },
+    "market": {
+     "ci": [
+      -0.5961,
+      0.0972
+     ],
+     "mean_r": -0.2491,
+     "n": 127,
+     "win_rate": 0.3858
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.6131,
+      0.0869
+     ],
+     "mean_r": -0.2617,
+     "n": 126,
+     "win_rate": 0.381
+    },
+    "market_of_missed": {
+     "ci": null,
+     "mean_r": 1.3467,
+     "n": 1,
+     "win_rate": 1.0
+    },
+    "missed": 1,
+    "signals": 127,
+    "skipped": 0
+   },
+   "trend": {
+    "filled": 1253,
+    "limit": {
+     "ci": [
+      -0.2126,
+      0.1546
+     ],
+     "mean_r": -0.0282,
+     "n": 1253,
+     "win_rate": 0.34
+    },
+    "market": {
+     "ci": [
+      -0.2611,
+      0.1039
+     ],
+     "mean_r": -0.0798,
+     "n": 1274,
+     "win_rate": 0.3273
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.2797,
+      0.091
+     ],
+     "mean_r": -0.0907,
+     "n": 1253,
+     "win_rate": 0.324
+    },
+    "market_of_missed": {
+     "ci": [
+      0.0752,
+      1.1941
+     ],
+     "mean_r": 0.568,
+     "n": 21,
+     "win_rate": 0.5238
+    },
+    "missed": 21,
+    "signals": 1274,
+    "skipped": 0
+   }
+  },
+  "stress": {
+   "break": {
+    "filled": 1229,
+    "limit": {
+     "ci": [
+      -0.2163,
+      0.1541
+     ],
+     "mean_r": -0.0276,
+     "n": 1229,
+     "win_rate": 0.3816
+    },
+    "market": {
+     "ci": [
+      -0.277,
+      0.0856
+     ],
+     "mean_r": -0.0962,
+     "n": 1252,
+     "win_rate": 0.3786
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.2925,
+      0.0758
+     ],
+     "mean_r": -0.1071,
+     "n": 1229,
+     "win_rate": 0.3751
+    },
+    "market_of_missed": {
+     "ci": [
+      -0.1665,
+      1.1357
+     ],
+     "mean_r": 0.4855,
+     "n": 23,
+     "win_rate": 0.5652
+    },
+    "missed": 23,
+    "signals": 1252,
+    "skipped": 0
+   },
+   "dip": {
+    "filled": 126,
+    "limit": {
+     "ci": [
+      -0.5349,
+      0.1686
+     ],
+     "mean_r": -0.1828,
+     "n": 126,
+     "win_rate": 0.3889
+    },
+    "market": {
+     "ci": [
+      -0.6013,
+      0.1104
+     ],
+     "mean_r": -0.2535,
+     "n": 127,
+     "win_rate": 0.3858
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.6157,
+      0.0968
+     ],
+     "mean_r": -0.2662,
+     "n": 126,
+     "win_rate": 0.381
+    },
+    "market_of_missed": {
+     "ci": null,
+     "mean_r": 1.3467,
+     "n": 1,
+     "win_rate": 1.0
+    },
+    "missed": 1,
+    "signals": 127,
+    "skipped": 0
+   },
+   "trend": {
+    "filled": 1253,
+    "limit": {
+     "ci": [
+      -0.2192,
+      0.148
+     ],
+     "mean_r": -0.035,
+     "n": 1253,
+     "win_rate": 0.3392
+    },
+    "market": {
+     "ci": [
+      -0.2768,
+      0.0892
+     ],
+     "mean_r": -0.0957,
+     "n": 1274,
+     "win_rate": 0.3234
+    },
+    "market_of_filled": {
+     "ci": [
+      -0.2952,
+      0.0738
+     ],
+     "mean_r": -0.1066,
+     "n": 1253,
+     "win_rate": 0.32
+    },
+    "market_of_missed": {
+     "ci": [
+      0.0606,
+      1.1808
+     ],
+     "mean_r": 0.5539,
+     "n": 21,
+     "win_rate": 0.5238
+    },
+    "missed": 21,
+    "signals": 1274,
+    "skipped": 0
+   }
+  }
+ },
+ "id": "EXP-0021",
+ "names": [
+  "trend",
+  "break",
+  "dip"
+ ],
+ "pairs": [
+  "ADA/USD",
+  "AVAX/USD",
+  "BTC/USD",
+  "DOGE/USD",
+  "ETH/USD",
+  "LINK/USD",
+  "SOL/USD",
+  "XRP/USD"
+ ],
+ "start": 1728273600,
+ "verdict": {
+  "break": {
+   "failed_on": [
+    "ci_not_above_zero_primary",
+    "ci_not_above_zero_stress"
+   ],
+   "passed": false
+  },
+  "dip": {
+   "failed_on": [
+    "ci_not_above_zero_primary",
+    "ci_not_above_zero_stress"
+   ],
+   "passed": false
+  },
+  "trend": {
+   "failed_on": [
+    "ci_not_above_zero_primary",
+    "ci_not_above_zero_stress"
+   ],
+   "passed": false
+  }
+ }
+}
