@@ -30,6 +30,12 @@ def _value(row: dict[str, Any], name: str) -> float:
     return float(v) if isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) else math.nan
 
 
+def _platt(p: float, a: float, b: float) -> float:
+    """The model's calibration (DEC-0017): sigmoid(a * logit(p) + b). (1, 0) leaves the score as it is."""
+    p = min(1 - 1e-6, max(1e-6, p))
+    return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, a * math.log(p / (1 - p)) + b))))
+
+
 def logistic(body: bytes, p: Pointer, rows: list[dict[str, Any]]) -> list[float]:
     """Standardised inputs times weights, through the logistic function. A missing input takes its training mean,
     which is zero after standardising: it neither helps nor hurts."""
@@ -56,7 +62,8 @@ def boosted(body: bytes, p: Pointer, rows: list[dict[str, Any]]) -> list[float]:
 def score(models: Path, rows: list[dict[str, Any]], now: dt.datetime, max_age_days: float) -> dict[str, Any]:
     p = read_pointer(models)
     body = read_model(p, now, max_age_days)
-    scores = (logistic if p.kind == "logistic" else boosted)(body, p, rows)
+    a, b = p.calibration
+    scores = [_platt(s, a, b) for s in (logistic if p.kind == "logistic" else boosted)(body, p, rows)]
     if len(scores) != len(rows) or not all(0.0 <= s <= 1.0 for s in scores):
         raise ModelError("bad_model")
     return {"version": p.version, "kind": p.kind, "scores": [round(s, 6) for s in scores], "cutoff": p.cutoff,

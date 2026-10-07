@@ -36,6 +36,7 @@ class Pointer:
     cutoff: float               # a signal scored below this is skipped once the model is promoted
     half_below: float           # and one below this is taken at half size
     path: Path
+    calibration: tuple[float, float] = (1.0, 0.0)   # Platt scaling (DEC-0017): sigmoid(a * logit(p) + b)
 
     def age_days(self, now: dt.datetime) -> float:
         return (now - dt.datetime.fromisoformat(self.trained_at)).total_seconds() / 86_400
@@ -50,8 +51,10 @@ def read_pointer(models: Path) -> Pointer:
         kind, version = str(d["kind"]), str(d["version"])
         if kind not in KINDS or not version or "/" in version or version.startswith("."):
             raise ValueError(kind)
+        cal = d.get("calibration") or [1.0, 0.0]
         return Pointer(version, kind, tuple(str(x) for x in d["inputs"]), str(d["sha256"]), str(d["trained_at"]),
-                       float(d["cutoff"]), float(d["half_below"]), models / version / KINDS[kind])
+                       float(d["cutoff"]), float(d["half_below"]), models / version / KINDS[kind],
+                       (float(cal[0]), float(cal[1])))
     except (ValueError, KeyError, TypeError) as e:
         raise ModelError("bad_pointer") from e
 
@@ -83,12 +86,12 @@ def _atomic(path: Path, body: bytes) -> None:
 
 
 def register(models: Path, version: str, kind: str, body: bytes, inputs: list[str], trained_at: str, cutoff: float,
-             half_below: float, card: dict[str, Any]) -> Pointer:
+             half_below: float, card: dict[str, Any], calibration: tuple[float, float] = (1.0, 0.0)) -> Pointer:
     """Write a model and its card under its version, then point `current.json` at it. The pointer is replaced
     last and atomically, so a reader sees the old model or the new one, never half of either."""
     _atomic(models / version / KINDS[kind], body)
     _atomic(models / version / "card.json", json.dumps(card, indent=1, sort_keys=True).encode())
     pointer = {"version": version, "kind": kind, "inputs": inputs, "sha256": hashlib.sha256(body).hexdigest(),
-               "trained_at": trained_at, "cutoff": cutoff, "half_below": half_below}
+               "trained_at": trained_at, "cutoff": cutoff, "half_below": half_below, "calibration": list(calibration)}
     _atomic(models / "current.json", json.dumps(pointer, indent=1, sort_keys=True).encode())
     return read_pointer(models)

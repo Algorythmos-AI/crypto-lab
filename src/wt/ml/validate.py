@@ -13,7 +13,34 @@ import numpy as np
 
 from wt.ml.dataset import Example
 
-Fit = Callable[[np.ndarray, np.ndarray, np.ndarray], Callable[[np.ndarray], np.ndarray]]
+Predict = Callable[[np.ndarray], np.ndarray]
+Fit = Callable[[np.ndarray, np.ndarray, np.ndarray], Predict]
+INNER_FOLDS, MIN_CALIBRATION = 3, 100                    # DEC-0017
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    p = np.clip(p, 1e-6, 1 - 1e-6)
+    return np.asarray(np.log(p / (1 - p)))
+
+
+def platt(p: np.ndarray, a: float, b: float) -> np.ndarray:
+    return np.asarray(1.0 / (1.0 + np.exp(-np.clip(a * _logit(p) + b, -60, 60))))
+
+
+def calibration(examples: list[Example], x: np.ndarray, w: np.ndarray, fit: Fit, embargo_s: int) -> tuple[float, float]:
+    """Platt scaling for one model on one training set (DEC-0017): (a, b) fitted on predictions the model made
+    for signals it was not trained on, from inner walk-forward folds purged like the outer ones. (1, 0) when
+    there are too few such predictions to fit two numbers on."""
+    from sklearn.linear_model import LogisticRegression
+    y = np.array([e.y for e in examples], dtype=float)
+    pred = np.full(len(examples), np.nan)
+    for train, test in folds(examples, INNER_FOLDS, embargo_s):
+        pred[test] = fit(x[train], y[train], w[train])(x[test])
+    ok = np.isfinite(pred)
+    if ok.sum() < MIN_CALIBRATION or len(set(y[ok])) < 2:
+        return 1.0, 0.0
+    clf = LogisticRegression(C=1e6, max_iter=1000).fit(_logit(pred[ok]).reshape(-1, 1), y[ok], sample_weight=w[ok])
+    return float(clf.coef_[0][0]), float(clf.intercept_[0])
 
 
 def folds(examples: list[Example], n: int, embargo_s: int) -> Iterator[tuple[np.ndarray, np.ndarray]]:
@@ -35,7 +62,7 @@ def log_loss(y: np.ndarray, p: np.ndarray, w: np.ndarray) -> float:
 
 
 def walk_forward(examples: list[Example], x: np.ndarray, w: np.ndarray, fit: Fit | None, n: int, embargo_s: int,
-                 cutoff_pct: float) -> dict[str, object]:
+                 cutoff_pct: float, calibrate: bool = True) -> dict[str, object]:
     """Out-of-sample scores of one model over the folds. `fit` is None for M0, the model that takes every signal
     and predicts the training win rate. Besides log-loss it reports the question that matters to the desk: the
     mean R of the signals the model would keep against the ones it would skip, at the cut-off DEC-0016 fixes."""
@@ -48,7 +75,8 @@ def walk_forward(examples: list[Example], x: np.ndarray, w: np.ndarray, fit: Fit
             p_test, cut = np.full(len(test), base), -np.inf
         else:
             model = fit(x[train], y[train], w[train])
-            p_test, cut = model(x[test]), float(np.percentile(model(x[train]), cutoff_pct))
+            a, b = calibration([examples[i] for i in train], x[train], w[train], fit, embargo_s) if calibrate else (1.0, 0.0)
+            p_test, cut = platt(model(x[test]), a, b), float(np.percentile(platt(model(x[train]), a, b), cutoff_pct))
         pred[test] = p_test
         losses.append(log_loss(y[test], p_test, w[test]))
         kept += list(r[test][p_test >= cut])

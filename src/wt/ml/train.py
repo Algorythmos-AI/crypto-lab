@@ -49,32 +49,46 @@ def compare(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[s
     """Every allowed setting of every model through the walk-forward folds, and the choice."""
     lg = cfg["learning"]
     x, w = dataset.matrix(examples, inputs), dataset.uniqueness(examples, int(cfg["sleeves"]["common"]["timeframe_min"]) * 60)
-    tf_s = int(cfg["sleeves"]["common"]["timeframe_min"]) * 60
-    embargo = max(int(v["time_stop_bars"]) for k, v in cfg["sleeves"].items() if k != "common") * tf_s
+    embargo = _embargo(cfg)
     n, cut = int(lg["validation"]["folds"]), float(lg["promotion"]["cutoff_percentile"])
     m1, m2 = lg["models"]["m1"], lg["models"]["m2"]
     tried: dict[str, list[dict[str, Any]]] = {"m1": [], "m2": []}
     for s in models.grid(m1, ("C",)):
-        res = validate.walk_forward(examples, x, w, lambda a, b, c, s=s: models.fit_logistic(a, b, c, **s)[0], n, embargo, cut)
+        res = validate.walk_forward(examples, x, w, _fit(cfg, "m1", s), n, embargo, cut)
         tried["m1"].append({"settings": s, **res})
     for s in models.grid(m2, ("num_leaves", "n_estimators")):
-        res = validate.walk_forward(examples, x, w, lambda a, b, c, s=s: models.fit_boosted(a, b, c, m2, **s)[0], n, embargo, cut)
+        res = validate.walk_forward(examples, x, w, _fit(cfg, "m2", s), n, embargo, cut)
         tried["m2"].append({"settings": s, **res})
     best = {k: min(v, key=lambda d: d["log_loss"]) for k, v in tried.items()}
     m0 = validate.walk_forward(examples, x, w, None, n, embargo, cut)
     top = min(best.values(), key=lambda d: d["log_loss"])
     bar = top["log_loss"] + (top["log_loss_se"] or 0.0)
     chosen = next((k for k in ORDER if best[k]["log_loss"] <= bar and best[k]["log_loss"] < m0["log_loss"]), None)
-    return {"m0": m0, "tried": tried, "best": best, "chosen": chosen, "embargo_days": embargo // DAY, "folds": n}
+    return {"m0": m0, "tried": tried, "best": best, "chosen": chosen, "embargo_days": embargo // DAY, "folds": n,
+            "calibration": "platt, 3 inner purged folds (DEC-0017)", "attempt": 2}
+
+
+def _fit(cfg: dict[str, Any], kind: str, settings: dict[str, Any]) -> validate.Fit:
+    m2 = cfg["learning"]["models"]["m2"]
+    if kind == "m1":
+        return lambda a, b, c: models.fit_logistic(a, b, c, **settings)[0]
+    return lambda a, b, c: models.fit_boosted(a, b, c, m2, **settings)[0]
+
+
+def _embargo(cfg: dict[str, Any]) -> int:
+    tf_s = int(cfg["sleeves"]["common"]["timeframe_min"]) * 60
+    return max(int(v["time_stop_bars"]) for k, v in cfg["sleeves"].items() if k != "common") * tf_s
 
 
 def train_final(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[str], kind: str,
-                settings: dict[str, Any]) -> tuple[bytes, np.ndarray]:
+                settings: dict[str, Any]) -> tuple[bytes, np.ndarray, tuple[float, float]]:
+    """The chosen model on every example, its calibrated scores on them, and its calibration (DEC-0017)."""
     x, y = dataset.matrix(examples, inputs), np.array([e.y for e in examples], dtype=float)
     w = dataset.uniqueness(examples, int(cfg["sleeves"]["common"]["timeframe_min"]) * 60)
     predict, body = (models.fit_logistic(x, y, w, **settings) if kind == "m1"
                      else models.fit_boosted(x, y, w, cfg["learning"]["models"]["m2"], **settings))
-    return body, predict(x)
+    a, b = validate.calibration(examples, x, w, _fit(cfg, kind, settings), _embargo(cfg))
+    return body, validate.platt(predict(x), a, b), (a, b)
 
 
 def report(res: dict[str, Any]) -> str:
@@ -85,7 +99,8 @@ def report(res: dict[str, Any]) -> str:
              f"{day(res['start'])} to {day(res['end'])} (data hash `{res['data_hash']}`).",
              f"- Win rate of all signals after costs: {res['win_rate'] * 100:.1f}%. Mean R: {res['mean_r']:+.3f}.",
              f"- Validation: {c['folds']} purged walk-forward folds, embargo {c['embargo_days']} days. "
-             f"Inputs used: {len(res['inputs'])}.", "",
+             f"Inputs used: {len(res['inputs'])}.",
+             f"- Calibration: {c.get('calibration', 'none')}. This is attempt {c.get('attempt', 1)} at model selection.", "",
              "## Comparison on signals the model never saw", "",
              "| Model | Settings | Log-loss | Kept | Mean R kept | Skipped | Mean R skipped |", "|---|---|---|---|---|---|---|"]
 
@@ -144,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     chosen = comparison["chosen"]
     if chosen is not None:
         settings = comparison["best"][chosen]["settings"]
-        body, scores = train_final(cfg, examples, inputs, chosen, settings)
+        body, scores, (cal_a, cal_b) = train_final(cfg, examples, inputs, chosen, settings)
         kind = "logistic" if chosen == "m1" else "lightgbm"
         res["importance"] = models.importance(kind, body, inputs)
         p = cfg["learning"]["promotion"]
@@ -152,13 +167,15 @@ def main(argv: list[str] | None = None) -> int:
         half = float(np.percentile(scores, float(p["half_size_below_percentile"])))
         trained = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         version = f"{chosen}-{dt.datetime.now(dt.UTC):%Y%m%d}-{res['data_hash'][:8]}"
-        res["model"] = {"version": version, "kind": kind, "settings": settings, "cutoff": cutoff, "half_below": half}
+        res["model"] = {"version": version, "kind": kind, "settings": settings, "cutoff": cutoff, "half_below": half,
+                        "calibration": [cal_a, cal_b]}
         if a.register:
             card = {**{k: res[k] for k in ("decision", "start", "end", "examples", "win_rate", "mean_r", "by_sleeve",
                                            "inputs", "data_hash", "importance")},
                     "version": version, "kind": kind, "settings": settings, "trained_at": trained,
                     "validation": {"m0": comparison["m0"], "chosen": comparison["best"][chosen]}, "state": "shadow"}
-            modelfile.register(DESKS["crypto"].state_dir / "models", version, kind, body, inputs, trained, cutoff, half, card)
+            modelfile.register(DESKS["crypto"].state_dir / "models", version, kind, body, inputs, trained, cutoff, half,
+                               card, (cal_a, cal_b))
             print(f"registered {version}")
     print(json.dumps({"chosen": chosen, "m0": comparison["m0"]["log_loss"],
                       **{k: v["log_loss"] for k, v in comparison["best"].items()}}))

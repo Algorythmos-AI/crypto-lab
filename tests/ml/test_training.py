@@ -97,9 +97,9 @@ class Training(unittest.TestCase):
         ex = examples(400)
         inputs = dataset.usable_inputs(ex)
         for kind, settings in (("m1", {"C": 1}), ("m2", {"num_leaves": 4, "n_estimators": 100})):
-            a, sa = train.train_final(CFG, ex, inputs, kind, settings)
-            b, sb = train.train_final(CFG, ex, inputs, kind, settings)
-            self.assertEqual(a, b)
+            a, sa, ca = train.train_final(CFG, ex, inputs, kind, settings)
+            b, sb, cb = train.train_final(CFG, ex, inputs, kind, settings)
+            self.assertEqual((a, ca), (b, cb))
             np.testing.assert_array_equal(sa, sb)
         self.assertEqual(dataset.data_hash(ex), dataset.data_hash(examples(400)))
 
@@ -109,15 +109,35 @@ class Training(unittest.TestCase):
         ex = examples(400)
         inputs = dataset.usable_inputs(ex)
         for kind, name, settings in (("m1", "logistic", {"C": 1}), ("m2", "lightgbm", {"num_leaves": 4, "n_estimators": 100})):
-            body, scores = train.train_final(CFG, ex, inputs, kind, settings)
+            body, scores, cal = train.train_final(CFG, ex, inputs, kind, settings)
+            self.assertNotEqual(cal, (1.0, 0.0))                 # enough examples: a calibration was fitted
             with tempfile.TemporaryDirectory() as tmp:
                 now = dt.datetime.now(dt.UTC)
-                modelfile.register(Path(tmp), "v", name, body, inputs, now.isoformat(), 0.4, 0.6, {})
+                modelfile.register(Path(tmp), "v", name, body, inputs, now.isoformat(), 0.4, 0.6, {}, cal)
                 rows = [{**{k: v for k, v in e.inputs.items() if v is not None}, f"is_{e.sleeve}": 1.0,
                          **{f"is_{n}": 0.0 for n in ("trend", "break", "dip") if n != e.sleeve}} for e in ex[:40]]
                 got = scoring.score(Path(tmp), rows, now, 14)["scores"]
             np.testing.assert_allclose(got, scores[:40], atol=1e-5)
             self.assertTrue(models.importance(name, body, inputs))
+
+
+class Calibration(unittest.TestCase):
+    def test_overconfident_scores_are_pulled_back_without_changing_their_order(self) -> None:
+        p = np.array([0.02, 0.2, 0.5, 0.8, 0.98])
+        np.testing.assert_allclose(validate.platt(p, 1.0, 0.0), p, atol=1e-6)
+        soft = validate.platt(p, 0.3, -0.5)
+        self.assertTrue(np.all(np.diff(soft) > 0))                # monotone: the ranking is untouched
+        self.assertLess(soft.max() - soft.min(), p.max() - p.min())
+
+    def test_calibration_is_fitted_only_on_predictions_for_unseen_signals_and_improves_log_loss(self) -> None:
+        ex = examples(900, signal=0.5)
+        inputs = dataset.usable_inputs(ex)
+        x, w = dataset.matrix(ex, inputs), dataset.uniqueness(ex, H4)
+        fit = train._fit(CFG, "m2", {"num_leaves": 8, "n_estimators": 300})
+        raw = validate.walk_forward(ex, x, w, fit, 5, 30 * DAY, 40, calibrate=False)
+        cal = validate.walk_forward(ex, x, w, fit, 5, 30 * DAY, 40, calibrate=True)
+        self.assertLess(cal["log_loss"], raw["log_loss"])
+        self.assertEqual(validate.calibration(ex[:60], x[:60], w[:60], fit, 30 * DAY), (1.0, 0.0))    # too few: none
 
 
 if __name__ == "__main__":
