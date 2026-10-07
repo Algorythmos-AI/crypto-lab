@@ -159,3 +159,90 @@ class KrakenPublic:
                             Decimal(str(row["costmin"])))
         except (StopIteration, KeyError, TypeError, ValueError, ArithmeticError) as e:
             raise DataError("AssetPairs: malformed response") from e
+
+
+# ---------------------------------------------------------------- history for research (DEC-0015)
+
+HIST_BASE = "https://api.exchange.coinbase.com"      # public candles; Kraken serves only its last 720 bars
+HIST_MAX = 300                                       # candles per call
+HIST_INTERVAL_S = 0.35
+
+
+def _utc(t: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
+class CoinbasePublic:
+    """Hourly candles from a second public exchange, for the backtest and for training. Never used to trade:
+    the desk's prices are Kraken's. No key. Every failure is a DataError."""
+
+    def __init__(self, get: Get | None = None, min_interval_s: float = HIST_INTERVAL_S,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
+        self._get, self._gap, self._sleep, self._last = get or _http_get, min_interval_s, sleep, 0.0
+        self.calls = 0
+
+    def candles(self, product: str, step_s: int, start: int, end: int) -> list[Bar]:
+        """Candles whose open time is in [start, end), oldest first. At most HIST_MAX of them."""
+        wait = self._last + self._gap - time.monotonic()
+        if wait > 0:
+            self._sleep(wait)
+        self._last = time.monotonic()
+        self.calls += 1
+        try:
+            body = self._get(f"{HIST_BASE}/products/{product}/candles",
+                             {"granularity": step_s, "start": _utc(start), "end": _utc(end - step_s)})
+        except DataError:
+            raise
+        except Exception as e:  # noqa: BLE001 — timeouts, DNS, TLS, bad JSON: all "no data"
+            raise DataError(f"candles: {e.__class__.__name__}") from e
+        if not isinstance(body, list):
+            raise DataError("candles: malformed response")
+        out: dict[int, Bar] = {}
+        try:
+            for r in body:                                   # [time, low, high, open, close, volume]
+                t, lo, hi, o, c, v = int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])
+                if start <= t < end and t % step_s == 0 and lo > 0 and hi >= lo:
+                    out[t] = Bar(t, o, hi, lo, c, (hi + lo + c) / 3, v, 1 if v > 0 else 0)
+        except (TypeError, ValueError, IndexError) as e:
+            raise DataError("candles: malformed response") from e
+        return [out[t] for t in sorted(out)]
+
+    def history(self, product: str, step_s: int, start: int, end: int) -> list[Bar]:
+        """Every candle in [start, end), paged."""
+        out: list[Bar] = []
+        t = start - start % step_s
+        while t < end:
+            nxt = min(end, t + HIST_MAX * step_s)
+            out += self.candles(product, step_s, t, nxt)
+            t = nxt
+        return out
+
+
+def fill_grid(bars: list[Bar], step_s: int) -> list[Bar]:
+    """`bars` on a full grid from its first to its last: an exchange omits a candle nobody traded in. The filler is
+    a flat bar at the last close with no volume, which `Bar.traded` reports as not a market."""
+    out: list[Bar] = []
+    for b in bars:
+        while out and b.t - out[-1].t > step_s:
+            p = out[-1]
+            out.append(Bar(p.t + step_s, p.c, p.c, p.c, p.c, 0.0, 0.0, 0))
+        if not out or b.t > out[-1].t:
+            out.append(b)
+    return out
+
+
+def aggregate(bars: list[Bar], step_s: int, into_s: int) -> list[Bar]:
+    """Bars of `into_s` built from contiguous bars of `step_s`, on UTC boundaries. Only complete buckets."""
+    need = into_s // step_s
+    out: list[Bar] = []
+    bucket: list[Bar] = []
+    for b in bars:
+        if bucket and b.t // into_s != bucket[0].t // into_s:
+            bucket = []
+        bucket.append(b)
+        if len(bucket) == need and bucket[0].t % into_s == 0:
+            v = sum(x.v for x in bucket)
+            out.append(Bar(bucket[0].t, bucket[0].o, max(x.h for x in bucket), min(x.l for x in bucket), bucket[-1].c,
+                           sum(x.vwap * x.v for x in bucket) / v if v > 0 else 0.0, v, sum(x.n for x in bucket)))
+            bucket = []
+    return out

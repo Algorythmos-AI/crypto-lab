@@ -1,0 +1,469 @@
+{
+ "agreement": {
+  "ADA/USD": {
+   "bars": 720,
+   "max_pct": 0.447,
+   "median_pct": 0.0382,
+   "p95_pct": 0.1461
+  },
+  "AVAX/USD": {
+   "bars": 720,
+   "max_pct": 0.3957,
+   "median_pct": 0.0457,
+   "p95_pct": 0.1525
+  },
+  "BTC/USD": {
+   "bars": 720,
+   "max_pct": 0.0639,
+   "median_pct": 0.0078,
+   "p95_pct": 0.0308
+  },
+  "DOGE/USD": {
+   "bars": 720,
+   "max_pct": 0.2397,
+   "median_pct": 0.0252,
+   "p95_pct": 0.0933
+  },
+  "ETH/USD": {
+   "bars": 720,
+   "max_pct": 0.1158,
+   "median_pct": 0.0095,
+   "p95_pct": 0.0389
+  },
+  "LINK/USD": {
+   "bars": 720,
+   "max_pct": 0.3502,
+   "median_pct": 0.0328,
+   "p95_pct": 0.1131
+  },
+  "SOL/USD": {
+   "bars": 720,
+   "max_pct": 0.1818,
+   "median_pct": 0.0132,
+   "p95_pct": 0.052
+  },
+  "XRP/USD": {
+   "bars": 720,
+   "max_pct": 0.1589,
+   "median_pct": 0.0119,
+   "p95_pct": 0.0502
+  }
+ },
+ "controls": 100,
+ "costs": {
+  "slippage_bps": 5,
+  "taker_fee_pct": 0.4
+ },
+ "data_hash": "3a556ccdfce9996a",
+ "decision": "DEC-0015",
+ "end": 1791345600,
+ "id": "EXP-0016",
+ "n_trials": 7,
+ "pairs": [
+  "BTC/USD",
+  "ETH/USD",
+  "SOL/USD",
+  "XRP/USD",
+  "ADA/USD",
+  "DOGE/USD",
+  "LINK/USD",
+  "AVAX/USD"
+ ],
+ "seed": 7,
+ "sleeves": [
+  {
+   "base": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.06,
+      "trades": 30
+     },
+     "AVAX/USD": {
+      "mean_r": -0.296,
+      "trades": 35
+     },
+     "BTC/USD": {
+      "mean_r": -0.299,
+      "trades": 68
+     },
+     "DOGE/USD": {
+      "mean_r": 0.243,
+      "trades": 23
+     },
+     "ETH/USD": {
+      "mean_r": -0.143,
+      "trades": 59
+     },
+     "LINK/USD": {
+      "mean_r": -0.244,
+      "trades": 48
+     },
+     "SOL/USD": {
+      "mean_r": -0.234,
+      "trades": 59
+     },
+     "XRP/USD": {
+      "mean_r": -0.04,
+      "trades": 38
+     }
+    },
+    "by_reason": {
+     "stop": 333,
+     "trend_exit": 27
+    },
+    "ci_high": 0.0,
+    "ci_low": -0.3188,
+    "dsr": 0.0003,
+    "max_drawdown_pct": -52.88,
+    "max_drawdown_r": -78.958,
+    "mean_r": -0.1632,
+    "pnl": -4349.5,
+    "profit_factor": 0.692,
+    "refused": 914,
+    "return_pct": -43.49,
+    "sharpe": -0.1357,
+    "signals": 1276,
+    "sleeve": "trend",
+    "total_r": -58.763,
+    "trades": 360,
+    "trades_per_month": 15.01,
+    "win_rate": 0.2806
+   },
+   "config": "21689556f064",
+   "control_mean_r": -0.1979,
+   "control_p": 0.0099,
+   "hypothesis": "HYP-0021",
+   "name": "trend",
+   "stressed": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.05,
+      "trades": 30
+     },
+     "AVAX/USD": {
+      "mean_r": -0.306,
+      "trades": 35
+     },
+     "BTC/USD": {
+      "mean_r": -0.32,
+      "trades": 68
+     },
+     "DOGE/USD": {
+      "mean_r": 0.234,
+      "trades": 23
+     },
+     "ETH/USD": {
+      "mean_r": -0.157,
+      "trades": 59
+     },
+     "LINK/USD": {
+      "mean_r": -0.255,
+      "trades": 48
+     },
+     "SOL/USD": {
+      "mean_r": -0.247,
+      "trades": 59
+     },
+     "XRP/USD": {
+      "mean_r": -0.052,
+      "trades": 38
+     }
+    },
+    "by_reason": {
+     "stop": 333,
+     "trend_exit": 27
+    },
+    "ci_high": -0.0134,
+    "ci_low": -0.3326,
+    "dsr": 0.0002,
+    "max_drawdown_pct": -54.64,
+    "max_drawdown_r": -82.886,
+    "mean_r": -0.1768,
+    "pnl": -4581.93,
+    "profit_factor": 0.672,
+    "refused": 914,
+    "return_pct": -45.82,
+    "sharpe": -0.1471,
+    "signals": 1276,
+    "sleeve": "trend",
+    "total_r": -63.653,
+    "trades": 360,
+    "trades_per_month": 15.01,
+    "win_rate": 0.275
+   },
+   "verdict": {
+    "failed_on": [
+     "ci_not_above_zero_at_1.5x_slippage",
+     "deflated_sharpe",
+     "profit_factor"
+    ],
+    "passed": false
+   }
+  },
+  {
+   "base": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.089,
+      "trades": 37
+     },
+     "AVAX/USD": {
+      "mean_r": -0.175,
+      "trades": 26
+     },
+     "BTC/USD": {
+      "mean_r": -0.628,
+      "trades": 65
+     },
+     "DOGE/USD": {
+      "mean_r": 0.242,
+      "trades": 38
+     },
+     "ETH/USD": {
+      "mean_r": -0.031,
+      "trades": 51
+     },
+     "LINK/USD": {
+      "mean_r": -0.346,
+      "trades": 33
+     },
+     "SOL/USD": {
+      "mean_r": -0.23,
+      "trades": 56
+     },
+     "XRP/USD": {
+      "mean_r": 0.195,
+      "trades": 40
+     }
+    },
+    "by_reason": {
+     "stop": 214,
+     "target": 118,
+     "time": 14
+    },
+    "ci_high": 0.0462,
+    "ci_low": -0.3372,
+    "dsr": 0.0007,
+    "max_drawdown_pct": -54.79,
+    "max_drawdown_r": -85.993,
+    "mean_r": -0.1474,
+    "pnl": -3644.6,
+    "profit_factor": 0.808,
+    "refused": 908,
+    "return_pct": -36.45,
+    "sharpe": -0.1036,
+    "signals": 1256,
+    "sleeve": "break",
+    "total_r": -51.001,
+    "trades": 346,
+    "trades_per_month": 14.43,
+    "win_rate": 0.3671
+   },
+   "config": "5ac5204a1416",
+   "control_mean_r": -0.198,
+   "control_p": 0.1386,
+   "hypothesis": "HYP-0022",
+   "name": "break",
+   "stressed": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.086,
+      "trades": 37
+     },
+     "AVAX/USD": {
+      "mean_r": -0.179,
+      "trades": 26
+     },
+     "BTC/USD": {
+      "mean_r": -0.637,
+      "trades": 65
+     },
+     "DOGE/USD": {
+      "mean_r": 0.239,
+      "trades": 38
+     },
+     "ETH/USD": {
+      "mean_r": -0.035,
+      "trades": 51
+     },
+     "LINK/USD": {
+      "mean_r": -0.349,
+      "trades": 33
+     },
+     "SOL/USD": {
+      "mean_r": -0.235,
+      "trades": 56
+     },
+     "XRP/USD": {
+      "mean_r": 0.191,
+      "trades": 40
+     }
+    },
+    "by_reason": {
+     "stop": 214,
+     "target": 118,
+     "time": 14
+    },
+    "ci_high": 0.0402,
+    "ci_low": -0.3415,
+    "dsr": 0.0006,
+    "max_drawdown_pct": -55.32,
+    "max_drawdown_r": -87.248,
+    "mean_r": -0.152,
+    "pnl": -3732.93,
+    "profit_factor": 0.803,
+    "refused": 908,
+    "return_pct": -37.33,
+    "sharpe": -0.1065,
+    "signals": 1256,
+    "sleeve": "break",
+    "total_r": -52.583,
+    "trades": 346,
+    "trades_per_month": 14.43,
+    "win_rate": 0.3642
+   },
+   "verdict": {
+    "failed_on": [
+     "ci_not_above_zero_at_1.5x_slippage",
+     "deflated_sharpe",
+     "no_better_than_random_entry",
+     "profit_factor"
+    ],
+    "passed": false
+   }
+  },
+  {
+   "base": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.259,
+      "trades": 6
+     },
+     "AVAX/USD": {
+      "mean_r": -0.743,
+      "trades": 5
+     },
+     "BTC/USD": {
+      "mean_r": -0.656,
+      "trades": 18
+     },
+     "DOGE/USD": {
+      "mean_r": 0.071,
+      "trades": 10
+     },
+     "ETH/USD": {
+      "mean_r": -0.208,
+      "trades": 12
+     },
+     "LINK/USD": {
+      "mean_r": -0.713,
+      "trades": 13
+     },
+     "SOL/USD": {
+      "mean_r": -0.076,
+      "trades": 14
+     },
+     "XRP/USD": {
+      "mean_r": -0.35,
+      "trades": 9
+     }
+    },
+    "by_reason": {
+     "stop": 53,
+     "target": 28,
+     "time": 6
+    },
+    "ci_high": -0.024,
+    "ci_low": -0.6383,
+    "dsr": 0.0001,
+    "max_drawdown_pct": -30.51,
+    "max_drawdown_r": -38.276,
+    "mean_r": -0.3361,
+    "pnl": -2239.51,
+    "profit_factor": 0.563,
+    "refused": 44,
+    "return_pct": -22.4,
+    "sharpe": -0.2845,
+    "signals": 131,
+    "sleeve": "dip",
+    "total_r": -29.242,
+    "trades": 87,
+    "trades_per_month": 3.63,
+    "win_rate": 0.3563
+   },
+   "config": "06a640f39e0b",
+   "control_mean_r": -0.2295,
+   "control_p": 0.8911,
+   "hypothesis": "HYP-0023",
+   "name": "dip",
+   "stressed": {
+    "by_pair": {
+     "ADA/USD": {
+      "mean_r": 0.256,
+      "trades": 6
+     },
+     "AVAX/USD": {
+      "mean_r": -0.748,
+      "trades": 5
+     },
+     "BTC/USD": {
+      "mean_r": -0.665,
+      "trades": 18
+     },
+     "DOGE/USD": {
+      "mean_r": 0.069,
+      "trades": 10
+     },
+     "ETH/USD": {
+      "mean_r": -0.213,
+      "trades": 12
+     },
+     "LINK/USD": {
+      "mean_r": -0.699,
+      "trades": 14
+     },
+     "SOL/USD": {
+      "mean_r": -0.08,
+      "trades": 14
+     },
+     "XRP/USD": {
+      "mean_r": -0.353,
+      "trades": 9
+     }
+    },
+    "by_reason": {
+     "stop": 53,
+     "target": 28,
+     "time": 7
+    },
+    "ci_high": -0.0375,
+    "ci_low": -0.6427,
+    "dsr": 0.0001,
+    "max_drawdown_pct": -31.03,
+    "max_drawdown_r": -39.077,
+    "mean_r": -0.3424,
+    "pnl": -2303.1,
+    "profit_factor": 0.555,
+    "refused": 43,
+    "return_pct": -23.03,
+    "sharpe": -0.2907,
+    "signals": 131,
+    "sleeve": "dip",
+    "total_r": -30.129,
+    "trades": 88,
+    "trades_per_month": 3.67,
+    "win_rate": 0.3523
+   },
+   "verdict": {
+    "failed_on": [
+     "ci_not_above_zero_at_1.5x_slippage",
+     "deflated_sharpe",
+     "no_better_than_random_entry",
+     "profit_factor"
+    ],
+    "passed": false
+   }
+  }
+ ],
+ "start": 1728273600
+}

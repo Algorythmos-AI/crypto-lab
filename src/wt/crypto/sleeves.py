@@ -19,6 +19,8 @@ import datetime as dt
 import hashlib
 import json
 import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -134,19 +136,20 @@ def _sell(book: Book, name: str, sleeve: str, pos: Position, price: float, slip:
 
 def manage(book: Book, sleeve: str, name: str, bars: list[Bar], minutes: list[Bar], quote: Quote, now: float,
            c: rules.Common, p: dict[str, Any], costs: dict[str, Any], info: PairInfo | None, extra: dict[str, Any],
-           alerts: Alerts) -> None:
-    """Exits for one open position: stop or target on the 1-minute path first, then whatever a newly closed
-    strategy bar decides. Never blocked by the kill switch, a latch or a limit."""
+           alerts: Alerts, step_s: int = 60) -> None:
+    """Exits for one open position: stop or target on the fine-bar path first, then whatever a newly closed
+    strategy bar decides. Never blocked by the kill switch, a latch or a limit. `step_s` is the length of the
+    fine bars: 1-minute on the desk, hourly in the backtest."""
     pos = book.positions[name]
     fee, slip = float(costs["taker_fee_pct"]), float(costs["slippage_bps"])
     mins = [m for m in minutes if m.t > pos.checked_to]
-    if mins and mins[0].t - pos.checked_to > 120:
+    if mins and mins[0].t - pos.checked_to > 2 * step_s:
         book.note({"kind": "exit_gap", "t": _iso(now), "pair": name, "from": pos.checked_to, "to": mins[0].t, **extra})
         alerts.fire(f"crypto:exit-gap:{sleeve}:{name}", "Crypto: an open position has an unobserved gap",
-                    f"{sleeve} {name}: 1-minute data is missing between the last check and now.", 4)
+                    f"{sleeve} {name}: fine-bar data is missing between the last check and now.", 4)
     x = find_exit(mins, float(pos.stop), float(pos.target))
     if x is not None:
-        _sell(book, name, sleeve, pos, x.price, slip if x.reason == "stop" else 0.0, fee, x.t + 60, x.reason, extra)
+        _sell(book, name, sleeve, pos, x.price, slip if x.reason == "stop" else 0.0, fee, x.t + step_s, x.reason, extra)
         return
     if mins:
         pos.checked_to = mins[-1].t
@@ -192,19 +195,133 @@ def enter(book: Book, sleeve: str, name: str, last: Bar, atr: float, quote: Quot
     return []
 
 
+@dataclass
+class Run:
+    """Everything one cycle of the sleeves works with. The desk builds it from the venue and its files; the
+    backtest builds it from history. Both then call `step_pair` and `finish`, so they cannot drift apart."""
+    now: float
+    desk: Desk
+    names: list[str]
+    sc: dict[str, Any]
+    c: rules.Common
+    costs: dict[str, Any]
+    qcfg: dict[str, Any]
+    lim: risk.SleeveLimits
+    pairs: tuple[str, ...]
+    books: dict[str, Book]
+    infos: dict[str, PairInfo]
+    extra: dict[str, dict[str, Any]]
+    alerts: Alerts
+    step_s: int = 60                    # length of the fine bars exits are resolved on
+    marks: dict[str, float] = field(default_factory=dict)
+    seen: dict[str, dict[str, Any]] = field(default_factory=dict)
+    failed: dict[str, str] = field(default_factory=dict)
+    touched: set[str] = field(default_factory=set)
+    # The entry rule, when it is not the registered one: the backtest's random-entry control sets it.
+    entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None
+
+    @property
+    def day(self) -> str:
+        return utc_day(self.now)
+
+
+def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: list[Bar],
+              quote_of: Callable[[], Quote], minutes_of: Callable[[int], list[Bar]],
+              observe: Callable[[dict[str, Any]], None] | None = None) -> None:
+    """One pair, every sleeve: exits for those that hold it, then the newest closed bar as a possible entry.
+    `quote_of` and `minutes_of(since)` are asked only when needed. A DataError from them is the caller's."""
+    c, now = run.c, run.now
+    holders = [n for n in run.names if name in run.books[n].positions]
+    quote: Quote | None = None
+    if holders:
+        quote = quote_of()
+        run.marks[name] = quote.bid
+        minutes = minutes_of(min(run.books[n].positions[name].checked_to for n in holders))
+        for n in holders:
+            try:
+                manage(run.books[n], n, name, bars, minutes, quote, now, c, run.sc[n], run.costs,
+                       run.infos.get(kraken_pair), run.extra[n], run.alerts, run.step_s)
+                run.touched.add(n)
+            except Exception as e:  # noqa: BLE001 — one position's fault must not stop the others
+                run.failed[f"{n}:{name}"] = e.__class__.__name__
+    last = bars[-1]
+    fresh = 0 <= now - (last.t + c.timeframe_min * 60) <= FRESH_S
+    for n in run.names:
+        book = run.books[n]
+        if book.meta["last_bar"].get(name) == last.t:
+            continue                            # this bar was evaluated by an earlier run
+        try:
+            fire, why, atr = (run.entry or rules.entry)(n, bars, daily, c, run.sc[n])
+            row: dict[str, Any] = {"bar": last.t, "fire": fire, "why": list(why)}
+            if observe is not None:
+                observe({"t": last.t, "pair": name, "sleeve": n, "tf": c.timeframe_min, "close": last.c,
+                         "would_fire": fire, "why_not": list(why),
+                         "atr_pct": round(atr / last.c * 100, 4) if atr and last.c > 0 else None,
+                         "config": run.extra[n]["config"]})
+            if fire and atr is not None:
+                if not fresh:
+                    refused = ["late_bar"]
+                else:
+                    if quote is None:
+                        quote = quote_of()
+                        run.marks[name] = quote.bid
+                    q = assess(bars, quote, now, c.timeframe_min, run.qcfg)
+                    refused = enter(book, n, name, last, atr, quote, run.infos.get(kraken_pair), list(q.reasons),
+                                    now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
+                                    book.equity(run.marks), c, run.sc[n], run.costs, run.lim, run.extra[n])
+                if refused:
+                    book.note({"kind": "refused", "t": _iso(now), "pair": name, "bar": last.t, "why": refused,
+                               **run.extra[n]})
+                    row["refused"] = refused
+                else:
+                    row["entered"] = True
+                    if run.step_s != 60:
+                        # Coarser fine bars: the one that opens at the signal bar's close is the first to examine.
+                        book.positions[name].checked_to = int(now) - run.step_s
+            run.seen.setdefault(n, {})[name] = row
+            book.meta["last_bar"][name] = last.t
+            run.touched.add(n)
+        except DataError:
+            raise
+        except Exception as e:  # noqa: BLE001 — as above
+            run.failed[f"{n}:{name}"] = e.__class__.__name__
+
+
+def finish(run: Run, flush: Callable[[Book, Path, Path], Any], save: bool = True) -> None:
+    """End of a cycle for every sleeve: the loss latch, the cycle's own row, the book saved, the outbox written."""
+    for n in run.names:
+        book, folder = run.books[n], risk.sleeve_dir(run.desk, n)
+        equity = book.equity(run.marks)
+        if n in run.touched and risk.update_sleeve_latch(book, run.day, equity, folder, run.lim):
+            book.note({"kind": "latch", "t": _iso(run.now), "day": run.day, **run.extra[n]})
+            run.alerts.fire(f"crypto:latch:{n}", f"Crypto: sleeve {n} reached its daily loss limit, entries off",
+                            "Entries stay off for this sleeve until the owner resets the latch. Exits are managed.", 4)
+        if run.seen.get(n) or book.outbox:
+            book.note({"kind": "sleeve", "t": _iso(run.now), "pairs": run.seen.get(n, {}),
+                       "open": sorted(book.positions), "equity": str(equity.quantize(Decimal("0.01"))),
+                       "kill": run.desk.kill_file.exists(), **run.extra[n]})
+        if save:
+            book.save(folder / "book.json")
+        flush(book, folder / "book.json", run.desk.journal)
+
+
+def extras(cfg: dict[str, Any], names: list[str], tf: int) -> dict[str, dict[str, Any]]:
+    """What every journal row of a sleeve carries."""
+    return {n: {"sleeve": n, "strategy": str(cfg["sleeves"][n]["hypothesis"]), "tf": tf, "stage": STAGE,
+                "config": sleeve_hash(cfg, n)} for n in names}
+
+
 def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: Alerts, started: float,
             flush: Any) -> dict[str, Any]:
     """One cycle of every sleeve. `flush(book, book_path, journal)` is the cycle's own journal writer.
     Returns a summary for the cycle's log line."""
     sc = cfg["sleeves"]
-    common, costs, qcfg = sc["common"], cfg["costs"], cfg["quality"]
+    common = sc["common"]
     c = rules.Common.of(common)
     names = [n for n in rules.NAMES if n in sc]
     pairs: dict[str, str] = dict(common["pairs"])
-    lim = risk.load_sleeve_limits(str(common["limits"]))
-    day, budget = utc_day(now), Budget(api, started)
-    root = desk.state_dir / "sleeves"
-    state_path = root / "data.json"
+    budget = Budget(api, started)
+    state_path = desk.state_dir / "sleeves" / "data.json"
     state: dict[str, Any] = {"stored_to": {}, "info_day": "", "info": {}, "marks": {}}
     if state_path.exists():
         try:
@@ -214,95 +331,36 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
     books = {n: Book.load(risk.sleeve_dir(desk, n) / "book.json", Decimal(str(common["start_equity"]))) for n in names}
     for n in names:
         flush(books[n], risk.sleeve_dir(desk, n) / "book.json", desk.journal)        # repair, as the baseline does
-    extra = {n: {"sleeve": n, "strategy": str(sc[n]["hypothesis"]), "tf": c.timeframe_min, "stage": STAGE,
-                 "config": sleeve_hash(cfg, n)} for n in names}
-    infos = pair_infos(api, state, list(pairs.values()), day, budget)
-    failed: dict[str, str] = {}
-    marks: dict[str, float] = {}
-    seen: dict[str, dict[str, Any]] = {n: {} for n in names}
-    touched: set[str] = set()
+    run = Run(now, desk, names, sc, c, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(common["limits"])),
+              tuple(pairs), books, pair_infos(api, state, list(pairs.values()), utc_day(now), budget),
+              extras(cfg, names, c.timeframe_min), alerts)
+
+    def observe(rec: dict[str, Any]) -> None:
+        _append(desk.state_dir / "observations" / f"sleeve-{utc_day(rec['t'])}.jsonl", rec)
 
     try:
         for name, kraken_pair in pairs.items():
+            def quote_of(kraken_pair: str = kraken_pair) -> Quote:
+                budget.spend()
+                return api.ticker(kraken_pair)
+
+            def minutes_of(since: int, kraken_pair: str = kraken_pair) -> list[Bar]:
+                budget.spend()
+                return api.ohlc(kraken_pair, 1, since=since)
             try:
                 bars = series(api, desk, state, kraken_pair, c.timeframe_min, c.bars, now, budget)
                 daily = series(api, desk, state, kraken_pair, c.daily_min, c.daily_bars, now, budget)
-                holders = [n for n in names if name in books[n].positions]
-                quote: Quote | None = None
-                if holders:
-                    budget.spend()
-                    quote = api.ticker(kraken_pair)
-                    marks[name] = quote.bid
-                    budget.spend()
-                    minutes = api.ohlc(kraken_pair, 1, since=min(books[n].positions[name].checked_to for n in holders))
-                    for n in holders:
-                        try:
-                            manage(books[n], n, name, bars, minutes, quote, now, c, sc[n], costs,
-                                   infos.get(kraken_pair), extra[n], alerts)
-                            touched.add(n)
-                        except Exception as e:  # noqa: BLE001 — one position's fault must not stop the others
-                            failed[f"{n}:{name}"] = e.__class__.__name__
-                last = bars[-1]
-                fresh = 0 <= now - (last.t + c.timeframe_min * 60) <= FRESH_S
-                for n in names:
-                    book = books[n]
-                    if book.meta["last_bar"].get(name) == last.t:
-                        continue                            # this bar was evaluated by an earlier run
-                    try:
-                        fire, why, atr = rules.entry(n, bars, daily, c, sc[n])
-                        row: dict[str, Any] = {"bar": last.t, "fire": fire, "why": list(why)}
-                        _append(desk.state_dir / "observations" / f"sleeve-{utc_day(last.t)}.jsonl",
-                                {"t": last.t, "pair": name, "sleeve": n, "tf": c.timeframe_min, "close": last.c,
-                                 "would_fire": fire, "why_not": list(why),
-                                 "atr_pct": round(atr / last.c * 100, 4) if atr and last.c > 0 else None,
-                                 "config": extra[n]["config"]})
-                        if fire and atr is not None:
-                            if not fresh:
-                                refused = ["late_bar"]
-                            else:
-                                if quote is None:
-                                    budget.spend()
-                                    quote = api.ticker(kraken_pair)
-                                    marks[name] = quote.bid
-                                q = assess(bars, quote, now, c.timeframe_min, qcfg)
-                                refused = enter(book, n, name, last, atr, quote, infos.get(kraken_pair),
-                                                list(q.reasons), now, day, desk, risk.sleeve_dir(desk, n),
-                                                tuple(pairs), book.equity(marks), c, sc[n], costs, lim, extra[n])
-                            if refused:
-                                book.note({"kind": "refused", "t": _iso(now), "pair": name, "bar": last.t,
-                                           "why": refused, **extra[n]})
-                                row["refused"] = refused
-                            else:
-                                row["entered"] = True
-                        seen[n][name] = row
-                        book.meta["last_bar"][name] = last.t
-                        touched.add(n)
-                    except DataError:
-                        raise
-                    except Exception as e:  # noqa: BLE001 — as above
-                        failed[f"{n}:{name}"] = e.__class__.__name__
+                step_pair(run, name, kraken_pair, bars, daily, quote_of, minutes_of, observe)
             except DataError as e:
-                failed[name] = str(e)[:80]
+                run.failed[name] = str(e)[:80]
                 if str(e) == "budget":
                     break
             except Exception as e:  # noqa: BLE001 — a pair's fault must not stop the other pairs
-                failed[name] = e.__class__.__name__
+                run.failed[name] = e.__class__.__name__
     finally:
-        for n in names:
-            book, folder = books[n], risk.sleeve_dir(desk, n)
-            equity = book.equity(marks)
-            if n in touched and risk.update_sleeve_latch(book, day, equity, folder, lim):
-                book.note({"kind": "latch", "t": _iso(now), "day": day, **extra[n]})
-                alerts.fire(f"crypto:latch:{n}", f"Crypto: sleeve {n} reached its daily loss limit, entries off",
-                            "Entries stay off for this sleeve until the owner resets the latch. Exits are managed.", 4)
-            if seen[n] or book.outbox:
-                book.note({"kind": "sleeve", "t": _iso(now), "pairs": seen[n], "open": sorted(book.positions),
-                           "equity": str(equity.quantize(Decimal("0.01"))), "kill": desk.kill_file.exists(),
-                           **extra[n]})
-            book.save(folder / "book.json")
-            flush(book, folder / "book.json", desk.journal)
+        finish(run, flush)
         # The last bid read for each pair, for the snapshot to value open positions with (it never calls the venue).
-        state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in marks.items()}}
+        state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in run.marks.items()}}
         write_atomic(state_path, json.dumps(state, sort_keys=True))
-    return {"evaluated": {n: sorted(seen[n]) for n in names if seen[n]}, "failed": failed,
+    return {"evaluated": {n: sorted(run.seen[n]) for n in names if run.seen.get(n)}, "failed": run.failed,
             "open": {n: sorted(books[n].positions) for n in names if books[n].positions}}
