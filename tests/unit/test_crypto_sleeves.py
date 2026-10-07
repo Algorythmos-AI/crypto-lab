@@ -542,3 +542,48 @@ def test_an_exit_booked_against_a_moved_stop_is_shown_against_its_entry_risk():
             {"id": "old", "kind": "exit", "sleeve": "break", "pair": "SOL/USD", "entry_t": "nowhere", "pnl": "5", "r": 0.4},
             {"id": "base", "kind": "exit", "pair": "BTC/USD", "pnl": "1", "r": 2.0}]
     assert snapshot.exit_r(rows) == {"x": -0.799, "old": 0.4}                        # the baseline's rows are not touched
+
+
+# ---------------------------------------------------------------- the signal record (DEC-0016, 2)
+
+def test_every_signal_is_recorded_with_its_inputs_whether_or_not_it_was_bought(crypto):
+    from wt.crypto import signals
+    d, _, _ = crypto
+    d.kill_file.write_text("on")
+    v = venue({"XBTUSD": break_rows(), "ETHUSD": break_rows()})
+    run(v, crypto)
+    recs = rows_of(d, "break", "signal")
+    assert [(r["pair"], r["taken"], r["why"]) for r in recs] == [("BTC/USD", False, ["kill"]), ("ETH/USD", False, ["kill"])]
+    r = recs[0]
+    assert r["sid"] == f"break|BTC/USD|{B0}" and r["bar"] == B0 and r["stage"] == "incubation" and r["strategy"] == "HYP-0022"
+    assert tuple(r["inputs"]) == signals.INPUTS and len(CFG["learning"]["inputs"]) == len(signals.INPUTS)
+    assert list(r["inputs"]) == CFG["learning"]["inputs"]                        # the charter's list, in its order
+    i = r["inputs"]
+    assert i["breadth"] == 2.0 and i["held_elsewhere"] == 0.0 and i["hour_utc"] == 4.0 and i["day_of_week"] == 6.0
+    assert i["volume_ratio"] == 5.0 and i["btc_above_sma50"] in (0.0, 1.0) and i["spread_pct"] is not None
+    assert i["stop_pct"] == pytest.approx((r["price"] - r["stop"]) / r["price"] * 100, abs=1e-3) and r["target"] > r["price"]
+    assert ledger.verify_chain(d.journal) == []
+    snap = snapshot.collect(dt.datetime.fromtimestamp(v.now, dt.UTC), desk=d, cfg=CFG)
+    assert snap["perf"]["trades"] == 0 and snap["activity"]["entries_7d"] == 0   # the baseline's figures do not move
+
+
+def test_a_bought_signal_carries_the_positions_own_levels_and_a_late_one_is_still_recorded(crypto):
+    d, _, _ = crypto
+    v = venue({"XBTUSD": break_rows()})
+    run(v, crypto)
+    sig, entry = rows_of(d, "break", "signal")[0], rows_of(d, "break", "entry")[0]
+    assert sig["taken"] is True and sig["why"] == []
+    assert (sig["price"], sig["stop"], sig["target"]) == (float(entry["price"]), float(entry["stop"]), float(entry["target"]))
+    assert rows_of(d, "trend", "signal")[0]["inputs"]["held_elsewhere"] in (0.0, 1.0)
+    # one row per signal bar, however many times the cycle runs
+    run(v, crypto)
+    assert len(rows_of(d, "break", "signal")) == 1
+
+
+def test_a_signal_found_late_is_recorded_as_not_taken(crypto):
+    d, _, _ = crypto
+    v = venue({"XBTUSD": break_rows()})
+    v.now = B0 + H4 + sleeves.FRESH_S + 60
+    run(v, crypto)
+    sig = rows_of(d, "break", "signal")[0]
+    assert sig["taken"] is False and sig["why"] == ["late_bar"] and sig["inputs"]["spread_pct"] is None

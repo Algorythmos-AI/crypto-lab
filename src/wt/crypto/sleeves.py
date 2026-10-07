@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from wt.core.desk import Desk
-from wt.crypto import risk, rules
+from wt.crypto import risk, rules, signals
 from wt.crypto.book import BPS, Book, Position, Rejected, to_lot, to_tick, utc_day, write_atomic
 from wt.crypto.data import Bar, DataError, KrakenPublic, PairInfo, Quote
 from wt.crypto.quality import assess
@@ -217,6 +217,8 @@ class Run:
     seen: dict[str, dict[str, Any]] = field(default_factory=dict)
     failed: dict[str, str] = field(default_factory=dict)
     touched: set[str] = field(default_factory=set)
+    market: dict[str, float | None] = field(default_factory=dict)     # the wider market on this bar (signals.market)
+    signalled: list[tuple[str, dict[str, Any]]] = field(default_factory=list)   # (sleeve, signal row) awaiting breadth
     # The entry rule, when it is not the registered one: the backtest's random-entry control sets it.
     entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None
 
@@ -278,6 +280,7 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: lis
                     if run.step_s != 60:
                         # Coarser fine bars: the one that opens at the signal bar's close is the first to examine.
                         book.positions[name].checked_to = int(now) - run.step_s
+                run.signalled.append((n, _signal(run, n, name, last, bars, atr, quote, refused)))
             run.seen.setdefault(n, {})[name] = row
             book.meta["last_bar"][name] = last.t
             run.touched.add(n)
@@ -287,8 +290,35 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: lis
             run.failed[f"{n}:{name}"] = e.__class__.__name__
 
 
+def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: float, quote: Quote | None,
+            refused: list[str]) -> dict[str, Any]:
+    """The record of one signal (DEC-0016, 2): its inputs on the signal bar and the levels a trade at this moment
+    has, whether or not it was bought. A bought signal carries the position's own levels."""
+    pos = run.books[sleeve].positions.get(name) if not refused else None
+    if pos is not None:
+        price, stop = float(pos.entry_price), float(pos.stop)
+        target = float(pos.target) if pos.target.is_finite() else None
+    else:
+        price = (quote.ask if quote is not None else last.c) * (1 + float(run.costs["slippage_bps"]) / 10_000)
+        stop, target, _ = rules.levels(price, atr, run.c, run.sc[sleeve])
+    held = any(name in run.books[m].positions for m in run.names if m != sleeve)
+    return {"kind": "signal", "sid": f"{sleeve}|{name}|{last.t}", "t": _iso(run.now), "pair": name, "bar": last.t,
+            "taken": not refused, "why": list(refused), "price": round(price, 8), "stop": round(stop, 8),
+            "target": None if target is None else round(target, 8), "atr": round(atr, 8),
+            "inputs": signals.inputs(bars, price, stop, atr, None if quote is None else quote.spread_pct,
+                                     run.market, held, run.c.timeframe_min),
+            **run.extra[sleeve]}
+
+
 def finish(run: Run, flush: Callable[[Book, Path, Path], Any], save: bool = True) -> None:
-    """End of a cycle for every sleeve: the loss latch, the cycle's own row, the book saved, the outbox written."""
+    """End of a cycle for every sleeve: the signals' rows, the loss latch, the cycle's own row, the book saved,
+    the outbox written."""
+    for n, rec in run.signalled:
+        # How many pairs signalled for this sleeve on the same bar: known only now that all have been looked at.
+        rec["inputs"]["breadth"] = float(sum(1 for v in run.seen.get(n, {}).values()
+                                             if v.get("fire") and v.get("bar") == rec["bar"]))
+        run.books[n].note(rec)
+    run.signalled = []
     for n in run.names:
         book, folder = run.books[n], risk.sleeve_dir(run.desk, n)
         equity = book.equity(run.marks)
@@ -338,6 +368,12 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
     def observe(rec: dict[str, Any]) -> None:
         _append(desk.state_dir / "observations" / f"sleeve-{utc_day(rec['t'])}.jsonl", rec)
 
+    try:
+        # The wider market for the signals' inputs: Bitcoin's daily bars, already in the store on most cycles.
+        if "BTC/USD" in pairs:
+            run.market = signals.market(series(api, desk, state, pairs["BTC/USD"], c.daily_min, c.daily_bars, now, budget))
+    except Exception:  # noqa: BLE001 — a signal without its market inputs is still a signal
+        run.market = {}
     try:
         for name, kraken_pair in pairs.items():
             def quote_of(kraken_pair: str = kraken_pair) -> Quote:

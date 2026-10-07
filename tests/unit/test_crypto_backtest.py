@@ -153,3 +153,56 @@ def test_the_verdict_follows_the_registered_rules():
     assert {"ci_not_above_zero_at_1.5x_slippage", "deflated_sharpe", "no_better_than_random_entry", "profit_factor"} <= set(failed)
     none = backtest.summary([], "break", 0, 365 * DAY, 7, 10_000)
     assert none["trades"] == 0 and backtest.verdict(none, none, None)["passed"] is False
+
+
+# ---------------------------------------------------------------- following a signal to its outcome (DEC-0016, 2)
+
+def _one_pair_cfg() -> dict:
+    return {**CFG, "sleeves": {**CFG["sleeves"], "common": {**CFG["sleeves"]["common"], "pairs": {"BTC/USD": "XBTUSD"}}}}
+
+
+@pytest.mark.parametrize("after,reason", [
+    ([(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0)], "target"),
+    ([(104.0, 104.5, 96.0, 97.0, 2.0)], "stop"),
+])
+def test_a_signals_outcome_is_what_the_book_booked_for_the_trade_it_took(after, reason):
+    from wt.crypto import rules, signals
+    cfg = _one_pair_cfg()
+    history = {"BTC/USD": breakout_history(after)}
+    rows = backtest.run(cfg, history, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + H4 * (len(after) + 1) + 1)
+    sig = next(r for r in rows if r["kind"] == "signal" and r["sleeve"] == "break")
+    booked = next(r for r in rows if r["kind"] == "exit" and r["sleeve"] == "break")
+    assert sig["taken"] is True and booked["reason"] == reason
+    m = backtest.Market.of(history["BTC/USD"], H4, DAY)
+    c = rules.Common.of(cfg["sleeves"]["common"])
+    got = signals.outcome("break", sig["price"], sig["stop"], sig["target"], sig["atr"], sig["bar"], m.h4, m.hourly, c,
+                          cfg["sleeves"]["break"], cfg["costs"], 3600)
+    assert got["reason"] == reason and got["exit_price"] == pytest.approx(float(booked["exit_price"]), rel=1e-6)
+    assert got["r"] == pytest.approx(booked["r"], abs=0.01)                       # the book rounds to ticks and cents
+
+
+def test_a_refused_signal_gets_the_same_outcome_and_an_unfinished_one_gets_none():
+    from wt.crypto import rules, signals
+    cfg = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0)]
+    history = {"BTC/USD": breakout_history(after)}
+    m = backtest.Market.of(history["BTC/USD"], H4, DAY)
+    c = rules.Common.of(cfg["sleeves"]["common"])
+    price, atr = 104.052, 1.2357
+    stop, target, _ = rules.levels(price, atr, c, cfg["sleeves"]["break"])
+    full = signals.outcome("break", price, stop, target, atr, B0, m.h4, m.hourly, c, cfg["sleeves"]["break"], cfg["costs"], 3600)
+    assert full["reason"] == "target" and full["r"] > 1 and full["held_bars"] >= 1
+    early = [b for b in m.h4 if b.t <= B0 + H4]
+    fine = [b for b in m.hourly if b.t < B0 + 2 * H4]
+    assert signals.outcome("break", price, stop, target, atr, B0, early, fine, c, cfg["sleeves"]["break"], cfg["costs"], 3600) is None
+    assert signals.outcome("break", price, price, target, atr, B0, m.h4, m.hourly, c, cfg["sleeves"]["break"], cfg["costs"], 3600) is None
+
+
+def test_the_backtest_records_every_signal_so_history_can_be_labelled():
+    cfg = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0)] * 6
+    rows = backtest.run(cfg, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + 7 * H4 + 1)
+    sigs = [r for r in rows if r["kind"] == "signal"]
+    decided = [r for r in rows if r["kind"] in ("entry", "refused")]
+    assert len(sigs) == len(decided) > 0 and {r["sid"] for r in sigs} == {f"{r['sleeve']}|{r['pair']}|{r['bar']}" for r in decided}
+    assert all(r["inputs"]["btc_above_sma50"] in (0.0, 1.0) for r in sigs)       # the market inputs are there in history too

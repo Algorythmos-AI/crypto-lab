@@ -27,7 +27,7 @@ import numpy as np
 
 from wt.backtest import stats
 from wt.core.desk import DESKS
-from wt.crypto import indicators, risk, rules, sleeves
+from wt.crypto import indicators, risk, rules, signals, sleeves
 from wt.crypto.book import Book
 from wt.crypto.data import Bar, PairInfo, Quote, aggregate, fill_grid
 
@@ -97,6 +97,10 @@ def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, Pair
                                 extra, _Quiet(), step_s=HOUR)       # type: ignore[arg-type]
             if entry is not None:
                 cycle.entry = entry
+            if (btc := markets.get("BTC/USD")) is not None:
+                k = bisect.bisect_right(btc.d1_close, close)
+                if k >= c.daily_bars:
+                    cycle.market = signals.market(btc.d1[k - c.daily_bars:k])
             if cycle.day != last_day:                               # a new UTC day: the owner would have reset it
                 last_day = cycle.day
                 for n in names:
