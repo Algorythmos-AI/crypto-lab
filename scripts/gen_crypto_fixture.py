@@ -136,6 +136,38 @@ def sleeves_fixture(state: Path, journal: Path, cfg: dict[str, Any], rng: random
                                           for p in cfg["sleeves"]["common"]["pairs"]}, **extra})
         book.save(folder / "book.json")
     (state / "sleeves" / "data.json").write_text(json.dumps({"marks": marks}))
+    challengers_fixture(journal, end)
+
+
+def challengers_fixture(journal: Path, end: int) -> None:
+    """Three challengers as the daily run records them: one that failed its backtest, one that passed and is live,
+    one registered and not yet judged. Invented figures."""
+    from wt.crypto import challengers, rules
+    base = {"base": "break", "timeframe_min": 1440, "high_bars": 20, "stop_atr": 3.0, "target_atr": 6.0, "trail_atr": 2.0,
+            "min_stop_pct": 2.0, "btc_filter": True, "volume_filter": True, "skip_held": False}
+    figures = {"trades": 96, "trades_per_month": 4.0, "win_rate": 0.4375, "mean_r": 0.212, "ci_low": 0.031, "ci_high": 0.402,
+               "profit_factor": 1.41, "dsr": 0.962, "max_drawdown_pct": -7.4, "return_pct": 19.8, "total_r": 20.35}
+    plan = [({**base, "base": "trend", "timeframe_min": 240, "target_atr": "none", "trail_atr": 4.0}, "random", None, 8,
+             {"passed": False, "failed_on": ["ci_not_above_zero_at_1.5x_slippage", "deflated_sharpe", "profit_factor"],
+              "base": {**figures, "trades": 212, "trades_per_month": 8.83, "win_rate": 0.33, "mean_r": -0.118, "profit_factor": 0.84,
+                       "dsr": 0.004, "max_drawdown_pct": -31.2},
+              "stressed": {"mean_r": -0.131, "ci_low": -0.262, "ci_high": 0.018}, "control_p": 0.41}),
+            (base, "neighbour", "break", 9,
+             {"passed": True, "failed_on": [], "base": figures,
+              "stressed": {"mean_r": 0.198, "ci_low": 0.019, "ci_high": 0.389}, "control_p": 0.01}),
+            ({**base, "base": "dip", "stop_atr": 4.0, "target_atr": 8.0}, "random", None, 10, None)]
+    for k, (dials, slot, of, n_trials, c1) in enumerate(plan):
+        d = rules.canonical(dials)
+        cid = rules.challenger_id(d)
+        t = end - 86_400 * (8 if k < 2 else 1) + 60 * k
+        common = {"kind": "challenger", "sleeve": cid}
+        ledger.append(journal, {"id": f"ch{k}r", "event": "registered", "t": _iso(t), "dials": d, "rules": challengers.describe(d),
+                                "slot": slot, "of": of, "week": challengers.week_of(t), "n_trials": n_trials, **common})
+        if c1 is not None:
+            ledger.append(journal, {"id": f"ch{k}c", "event": "c1", "t": _iso(t + 300), "span": [1728273600, 1791345600],
+                                    "n_trials": n_trials, "controls": 100, "seed": 7, "data_hash": "fixture", **c1, **common})
+            if c1["passed"]:
+                ledger.append(journal, {"id": f"ch{k}a", "event": "admitted", "t": _iso(t + 301), **common})
 
 
 def _iso(t: float) -> str:

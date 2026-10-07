@@ -85,6 +85,14 @@ ALLOW: dict[str, Any] = {
                  "signals": [{"t": S, "pair": S, "outcome": S, "why": [S]}],
                  "why_not": [{"pair": S, "bar": S, "fire": B, "why": [S]}],
                  "equity_curve": [{"t": S, "equity": N}]}],
+    # ---- the challengers (DEC-0016, 5): every strategy idea tried, with the verdict of its backtest ----
+    "challengers": {"learning": S, "week": S, "per_week": I, "max_live": I, "max_registered": I, "registered": I,
+                    "live": I, "failed": I, "retired": I, "drawn_this_week": I,
+                    "list": [{"id": S, "rules": S, "slot": S, "of": S, "week": S, "registered": S, "status": S,
+                              "n_trials": I, "trades": I, "trades_per_month": N, "win_rate": N, "mean_r": N,
+                              "ci_low": N, "ci_high": N, "profit_factor": N, "dsr": N, "control_p": N,
+                              "max_drawdown_pct": N, "failed_on": [S], "admitted": S, "retired": S,
+                              "retired_why": S}]},
 }
 HISTOGRAMS = ("rsi", "atr_pct", "vwap_distance_pct", "volume_ratio")
 
@@ -279,9 +287,10 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
              for n in rules.NAMES if n in sc]
     try:
         from wt.crypto import challengers
-        specs, off = challengers.active(desk, cfg)
+        record = challengers.state_of(rows)
+        specs, off = challengers.active(desk, cfg, record)
         shown += [(cid, ("Retired challenger: " if off.get(cid) == challengers.RETIRED_CODE else "Challenger: ")
-                   + challengers.describe(rules.canonical(challengers.load_state(desk)[cid]["dials"])),
+                   + challengers.describe(rules.canonical(record[cid]["dials"])),
                    "passed", s.c.timeframe_min, cid) for cid, s in specs.items()]
     except Exception as fault:  # noqa: BLE001 — the registered sleeves are shown whatever the challengers' record says
         print(f"challengers left out of the snapshot ({fault.__class__.__name__})", file=sys.stderr)
@@ -346,6 +355,36 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
                         for pair, v in ((last_eval or {}).get("pairs") or {}).items() if isinstance(v, dict)],
             "equity_curve": [{"t": k + ":00:00+00:00", "equity": v} for k, v in sorted(curve.items())]})
     return out
+
+
+def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> dict[str, Any] | None:
+    """Every challenger registered, newest first, with the figures its gate C1 was judged on. The interval is the
+    one at 1.5x slippage: that is the one the gate reads. None when the config has no challengers."""
+    from wt.crypto import challengers
+    ch = (cfg.get("learning") or {}).get("challengers")
+    if not ch:
+        return None
+    state = challengers.state_of(rows)
+    week = challengers.week_of(now.timestamp())
+    out = []
+    for rec in reversed(list(state.values())):
+        c1 = rec.get("c1") or {}
+        base, hard, gone = c1.get("base") or {}, c1.get("stressed") or {}, rec.get("retired") or {}
+        out.append({"id": rec["id"], "rules": rec.get("rules"), "slot": rec.get("slot"), "of": rec.get("of"),
+                    "week": rec.get("week"), "registered": rec.get("registered"), "status": rec.get("status"),
+                    "n_trials": rec.get("n_trials"), "trades": base.get("trades"),
+                    "trades_per_month": base.get("trades_per_month"), "win_rate": base.get("win_rate"),
+                    "mean_r": base.get("mean_r"), "ci_low": hard.get("ci_low"), "ci_high": hard.get("ci_high"),
+                    "profit_factor": base.get("profit_factor"), "dsr": base.get("dsr"), "control_p": c1.get("control_p"),
+                    "max_drawdown_pct": base.get("max_drawdown_pct"), "failed_on": c1.get("failed_on") or [],
+                    "admitted": rec.get("admitted"), "retired": gone.get("t"), "retired_why": gone.get("why")})
+
+    def count(status: str) -> int:
+        return sum(1 for r in state.values() if r.get("status") == status)
+    return {"learning": "off" if risk.learning_file(desk).exists() else "on", "week": week,
+            "per_week": int(ch["per_week"]), "max_live": int(ch["max_live"]), "max_registered": int(ch["max_registered"]),
+            "registered": len(state), "live": count("live"), "failed": count("failed"), "retired": count("retired"),
+            "drawn_this_week": sum(1 for r in state.values() if r.get("week") == week), "list": out}
 
 
 PUBLISH_JOB = "dashboard-crypto"
@@ -421,17 +460,18 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "jobs": {"last": _last_jobs({k: v for k, v in last_runs().items() if mine(k)}, runs), "runs": runs[-200:]},
         "alerts": {"firing": [{"key": k, "since": v.get("since")} for k, v in sorted(Alerts().firing().items())
                               if desk_of_alert(k) == desk.name]},
-        "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now)),
+        "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now), []),
+        "challengers": _guarded(lambda: challengers_view(desk, cfg, every, now), None),
     }
 
 
-def _guarded(view: Any) -> Any:
-    """The tournament view must never stop the baseline's snapshot: a fault leaves the key out, and says so."""
+def _guarded(view: Any, empty: Any) -> Any:
+    """The tournament's views must never stop the baseline's snapshot: a fault leaves the key empty, and says so."""
     try:
         return view()
     except Exception as e:  # noqa: BLE001
-        print(f"sleeves view failed ({e.__class__.__name__}); left out", file=sys.stderr)
-        return []
+        print(f"tournament view failed ({e.__class__.__name__}); left out", file=sys.stderr)
+        return empty
 
 
 def build(raw: dict[str, Any], san: publish.Sanitizer, run_id: str, now: dt.datetime) -> dict[str, Any]:

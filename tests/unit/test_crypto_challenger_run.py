@@ -332,3 +332,31 @@ def test_the_daily_job_is_not_a_trading_job_and_a_deploy_waits_for_it(tmp_path):
         assert busy == ["crypto-challengers"]
     with deploy.quiesced(wait_s=0) as busy:
         assert busy == []
+
+
+# ---------------------------------------------------------------- the dashboard's list
+def test_the_snapshot_lists_every_challenger_with_its_verdict_and_writes_nothing(crypto, monkeypatch):  # noqa: F811
+    import datetime as dt
+    d, a, _ = crypto
+    gate_returning(monkeypatch, FAIL)
+    assert challengers.run(NOW, d, CFG, MARKET, a) == 0                         # two drawn, both fail
+    cid = rules.challenger_id(WIDE)
+    challengers.note(d, cid, "registered", NOW + 60, dials=WIDE, rules=challengers.describe(WIDE), slot="random",
+                     of=None, week=WEEK, n_trials=10)
+    challengers.state_path(d).unlink()
+    now = dt.datetime.fromtimestamp(NOW + 120, dt.UTC)
+    view = snapshot.challengers_view(d, CFG, journal(d), now)
+    assert view is not None and not challengers.state_path(d).exists()          # read from the journal's rows alone
+    assert (view["registered"], view["failed"], view["live"], view["drawn_this_week"]) == (3, 2, 0, 3)
+    assert (view["learning"], view["per_week"], view["max_live"], view["max_registered"]) == ("on", 2, 6, 60)
+    newest, older = view["list"][0], view["list"][-1]
+    assert (newest["id"], newest["status"], newest["trades"], newest["failed_on"]) == (cid, "registered", None, [])
+    assert older["status"] == "failed" and older["failed_on"] == ["too_few_trades"] and older["mean_r"] == -0.4
+    assert older["ci_low"] == 0.05 and older["control_p"] == 0.01 and older["rules"]
+    risk.learning_file(d).write_text("off\n")
+    assert snapshot.challengers_view(d, CFG, journal(d), now)["learning"] == "off"
+    assert snapshot.challengers_view(d, {**CFG, "learning": {}}, journal(d), now) is None
+    # The whole section passes the published contract.
+    clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply(
+        {"challengers": snapshot.ALLOW["challengers"]}, {"challengers": view})
+    assert clean["challengers"]["list"][0]["id"] == cid and len(clean["challengers"]["list"]) == 3

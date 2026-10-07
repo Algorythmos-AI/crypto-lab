@@ -194,16 +194,18 @@ def learning_off(desk: Desk) -> bool:
     return risk.learning_file(desk).exists()
 
 
-def active(desk: Desk, cfg: dict[str, Any]) -> tuple[dict[str, rules.Spec], dict[str, str]]:
+def active(desk: Desk, cfg: dict[str, Any],
+           state: dict[str, dict[str, Any]] | None = None) -> tuple[dict[str, rules.Spec], dict[str, str]]:
     """The challengers the bar cycle runs, and the ones among them that may not open a trade (with the reason).
     A live challenger runs; a retired one runs only while it still holds a position, for its exits. The owner's
-    switch stops every challenger's entries and no exit."""
+    switch stops every challenger's entries and no exit. `state` is the folded record when the caller already
+    has it (the snapshot, which writes nothing)."""
     from wt.crypto.book import Book
     specs: dict[str, rules.Spec] = {}
     off: dict[str, str] = {}
     switched_off = learning_off(desk)
     start = Decimal(str(cfg["sleeves"]["common"]["start_equity"]))
-    for cid, rec in load_state(desk).items():
+    for cid, rec in (load_state(desk) if state is None else state).items():
         status = rec.get("status")
         if status not in (LIVE, RETIRED):
             continue
