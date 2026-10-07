@@ -633,3 +633,26 @@ def test_the_tournament_sleeves_are_registered_and_leave_the_baseline_alone():
         assert "Status: ACCEPTED" in next((ROOT / "research/decisions").glob(f"{dec}-*.md")).read_text()
     assert cycle.config_hash(FILE_CFG) == cycle.config_hash({k: v for k, v in FILE_CFG.items() if k != "sleeves"})
     assert cycle.config_hash(FILE_CFG) == "01aec7d7c569"            # the hash the desk has stamped since 2026-10-04
+
+
+def test_the_learning_charter_is_recorded_and_its_numbers_are_the_configs():
+    """DEC-0016: what may learn and act by itself, written down first. The record and the config must agree, and
+    adding the section must not move the baseline's or any sleeve's identity."""
+    from wt.crypto import sleeves
+    record = next((ROOT / "research/decisions").glob("DEC-0016-*.md")).read_text()
+    lg = FILE_CFG["learning"]
+    assert "Status: ACCEPTED" in record and lg["c1"] == {"experiment": "EXP-0016", "trend": "failed", "break": "failed",
+                                                       "dip": "failed"}
+    p, ch = lg["promotion"], lg["challengers"]
+    assert (p["checkpoint_signals"], p["max_checkpoints"], p["cutoff_percentile"], p["half_size_below_percentile"]) == (60, 6, 40, 60)
+    assert "every 60 signals" in record and "at most 6" in record and "40th percentile" in record and "0.05 / 6" in record
+    assert (p["scorer_timeout_s"], p["max_model_age_days"], p["drift_psi"]) == (20, 14, 0.25)
+    assert "20 seconds" in record and "14 days" in record and "exceeds 0.25" in record
+    assert (ch["per_week"], ch["max_live"], ch["max_registered"]) == (2, 6, 60)
+    assert "6 live challengers, 2 new a week, 60 registered" in record
+    assert ch["retire"] == {"min_trades": 30, "max_drawdown_pct": 10, "idle_days": 60, "idle_min_trades": 5}
+    assert set(FILE_CFG["sleeves"]["common"]["pairs"]) <= set(lg["training_pairs"]) and len(lg["training_pairs"]) == 30
+    assert len(lg["inputs"]) == 14 and lg["models"]["forecaster"]["hub"] == "amazon/chronos-bolt-small"
+    assert cycle.config_hash(FILE_CFG) == "01aec7d7c569"
+    for name in ("trend", "break", "dip"):
+        assert sleeves.sleeve_hash(FILE_CFG, name) == sleeves.sleeve_hash({k: v for k, v in FILE_CFG.items() if k != "learning"}, name)

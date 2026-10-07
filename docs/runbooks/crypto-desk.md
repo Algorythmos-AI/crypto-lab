@@ -31,6 +31,7 @@ lines `[ok]`), then the Crypto tab of the dashboard.
 |---|---|
 | Stop new entries | `make kill DESK=crypto REASON="..."` |
 | Allow entries (the owner's decision; before gate C1 the trades are incubation, DEC-0014) | `make unkill DESK=crypto` |
+| Turn all learning off or on (the model's filter and the challengers; DEC-0016, 6) | `make crypto-learning-off` / `make crypto-learning-on` (arrives with the learning job) |
 | Clear the daily-loss latch | `make reset-crypto-latch` |
 | Stop the desk entirely | owner: `sudo systemctl disable --now wt-crypto.timer wt-dashboard-crypto.timer` |
 

@@ -77,6 +77,73 @@ sleeves:
     target_atr: 3.0
     time_stop_bars: 42
 
+# The learning charter (DEC-0016). Read by the recorder, the weekly learning job and the challenger generator.
+# Fixed by that record: a change to anything here is a new decision record. Not part of any config hash above.
+learning:
+  c1:                            # gate C1 results (EXP-0016). The sleeves keep trading as incubation (DEC-0016, 1).
+    experiment: EXP-0016
+    trend: failed
+    break: failed
+    dip: failed
+  inputs:                        # recorded with every signal, as they stood on the signal bar
+    - stop_pct                   # stop distance as a percent of the entry price
+    - atr_pct
+    - dist_ema20_pct
+    - dist_ema50_pct
+    - volume_ratio               # signal bar volume over its 20-bar mean
+    - rsi
+    - ret_30                     # the pair's return over 30 bars, percent
+    - btc_above_sma50            # 1 when Bitcoin's last daily close is above its 50-day average
+    - btc_ret_1d
+    - breadth                    # how many of the traded pairs signalled on the same bar
+    - held_elsewhere             # 1 when another sleeve holds the pair
+    - spread_pct
+    - hour_utc
+    - day_of_week
+  training_pairs:                # history used for training only; a pair needs 18 months of hourly bars
+    [BTC/USD, ETH/USD, SOL/USD, XRP/USD, ADA/USD, DOGE/USD, LINK/USD, AVAX/USD,
+     LTC/USD, BCH/USD, DOT/USD, UNI/USD, AAVE/USD, ATOM/USD, NEAR/USD, APT/USD, ARB/USD, OP/USD, SUI/USD,
+     INJ/USD, FIL/USD, ETC/USD, XLM/USD, HBAR/USD, ICP/USD, ALGO/USD, CRV/USD, SEI/USD, TIA/USD, SHIB/USD]
+  models:
+    m1: {library: scikit-learn, kind: logistic, C: [0.1, 1, 10]}
+    m2: {library: lightgbm, num_leaves: [4, 8], n_estimators: [100, 300], learning_rate: 0.05,
+         min_child_samples: 40, subsample: 0.8, colsample_bytree: 0.8, reg_lambda: 5}
+    m3: {library: lightgbm, base: m2, extra_inputs: [forecast_median_pct, forecast_spread_pct, regime]}
+    forecaster: {hub: amazon/chronos-bolt-small, licence: Apache-2.0, horizon_bars: 6}
+    regime: {library: scikit-learn, kind: gaussian_mixture, states: 3}
+  validation: {folds: 5, scheme: purged_walk_forward, embargo: longest_holding_period, score: log_loss,
+               selection: one_standard_error}
+  retrain: weekly
+  promotion:
+    checkpoint_signals: 60
+    max_checkpoints: 6
+    alpha: 0.05                  # one-sided, split across the checkpoints
+    cutoff_percentile: 40        # of training scores: below it a signal is skipped
+    half_size_below_percentile: 60
+    demotion_window_signals: 120
+    drift_psi: 0.25
+    drift_inputs: 3
+    scorer_timeout_s: 20
+    max_model_age_days: 14
+  challengers:
+    per_week: 2
+    max_live: 6
+    max_registered: 60
+    start_equity: 10000
+    limits: CT
+    dials:
+      base: [trend, break, dip]
+      timeframe_min: [240, 1440]
+      high_bars: [20, 30, 55]
+      stop_atr: [2.0, 3.0, 4.0]
+      target_atr: [none, 4.0, 6.0, 8.0]       # none = trailed stop
+      trail_atr: [2.0, 3.0, 4.0]
+      min_stop_pct: [1.0, 2.0, 3.0]
+      btc_filter: [false, true]
+      volume_filter: [false, true]
+      skip_held: [false, true]
+    retire: {min_trades: 30, max_drawdown_pct: 10, idle_days: 60, idle_min_trades: 5}
+
 account:
   start_equity: 10000            # USD, paper
 
