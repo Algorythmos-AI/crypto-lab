@@ -169,8 +169,9 @@ def manage(book: Book, sleeve: str, name: str, bars: list[Bar], minutes: list[Ba
 def enter(book: Book, sleeve: str, name: str, last: Bar, atr: float, quote: Quote, info: PairInfo | None,
           blockers: list[str], now: float, day: str, desk: Desk, folder: Path, pairs: tuple[str, ...],
           equity: Decimal, c: rules.Common, p: dict[str, Any], costs: dict[str, Any], lim: risk.SleeveLimits,
-          extra: dict[str, Any]) -> list[str]:
-    """Try the entry for a signal bar. Returns the codes that refused it; empty when the position was opened."""
+          extra: dict[str, Any], factor: float = 1.0) -> list[str]:
+    """Try the entry for a signal bar. Returns the codes that refused it; empty when the position was opened.
+    `factor` is what a promoted model allows of the rule's size (DEC-0016, 4): never more than all of it."""
     if info is None:
         return [*blockers, "no_pair_info"]
     fee = float(costs["taker_fee_pct"])
@@ -180,7 +181,8 @@ def enter(book: Book, sleeve: str, name: str, last: Bar, atr: float, quote: Quot
         return [*blockers, skip]
     stop = to_tick(Decimal(str(stop_f)), info.tick, ROUND_DOWN)
     target = NO_TARGET if target_f is None else to_tick(Decimal(str(target_f)), info.tick, ROUND_DOWN)
-    qty = to_lot(risk.size(equity, book.cash, price, stop, fee, lim), info.lot_decimals)
+    qty = to_lot(risk.size(equity, book.cash, price, stop, fee, lim) * Decimal(str(min(1.0, max(0.0, factor)))),
+                 info.lot_decimals)
     why = blockers + risk.sleeve_blockers(name, qty * price, equity, book, day, desk, folder, pairs, lim)
     if why:
         return why
@@ -193,6 +195,21 @@ def enter(book: Book, sleeve: str, name: str, last: Bar, atr: float, quote: Quot
                "target": None if target == NO_TARGET else str(pos.target), "fee": str(pos.entry_fee),
                "atr": round(atr, 8), "risk": str(pos.risk.quantize(Decimal("0.01"))), **extra})
     return []
+
+
+@dataclass
+class Pending:
+    """An entry that waits for the model's score."""
+    sleeve: str
+    pair: str
+    kraken_pair: str
+    last: Bar
+    bars: list[Bar]
+    atr: float
+    quote: Quote
+    reasons: list[str]
+    row: dict[str, Any]
+    equity: Decimal             # the book's value at the pair's turn: what the rule would have sized from
 
 
 @dataclass
@@ -220,6 +237,14 @@ class Run:
     # The entry rule, when it is not the registered one: the backtest's random-entry control sets it.
     entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None
     off: dict[str, str] = field(default_factory=dict)     # sleeves that may not open a trade, with the reason code
+    # The model in force (DEC-0016, 4). `scorer(signal rows)` gives (scores, None) or (None, why not); None: no
+    # model. In shadow the signals are scored once the cycle's entries are done. When `acting`, a registered
+    # sleeve's entry waits for its score: every pair is looked at first, then the entries are made.
+    scorer: Callable[[list[dict[str, Any]]], tuple[Any, str | None]] | None = None
+    acting: bool = False
+    lineage: str = ""
+    pending: list[Pending] = field(default_factory=list)
+    model_fault: str | None = None
 
     @property
     def day(self) -> str:
@@ -276,7 +301,7 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
             if book.meta["last_bar"].get(name) == last.t:
                 continue                        # this bar was evaluated by an earlier run
             fresh = 0 <= now - (last.t + c.timeframe_min * 60) <= FRESH_S
-            held = any(name in run.books[m].positions for m in run.names if m != n)
+            held = _held(run, n, name)
             fire, why, atr = rules.evaluate(spec, bars, daily, run.market, held, run.entry)
             row: dict[str, Any] = {"bar": last.t, "fire": fire, "why": list(why)}
             if observe is not None:
@@ -285,6 +310,7 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
                          "atr_pct": round(atr / last.c * 100, 4) if atr and last.c > 0 else None,
                          "config": run.extra[n]["config"]})
             if fire and atr is not None:
+                waits = False
                 if not fresh:
                     refused = ["late_bar"]
                 elif n in run.off:
@@ -294,19 +320,16 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
                         quote = quote_of()
                         run.marks[name] = quote.bid
                     q = assess(bars, quote, now, c.timeframe_min, run.qcfg)
-                    refused = enter(book, n, name, last, atr, quote, run.infos.get(kraken_pair), list(q.reasons),
-                                    now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
-                                    book.equity(run.marks), c, spec.p, run.costs, run.lim, run.extra[n])
-                if refused:
-                    book.note({"kind": "refused", "t": _iso(now), "pair": name, "bar": last.t, "why": refused,
-                               **run.extra[n]})
-                    row["refused"] = refused
-                else:
-                    row["entered"] = True
-                    if run.step_s != 60:
-                        # Coarser fine bars: the one that opens at the signal bar's close is the first to examine.
-                        book.positions[name].checked_to = int(now) - run.step_s
-                run.signalled.append((n, _signal(run, n, name, last, bars, atr, quote, refused)))
+                    if run.acting and run.scorer is not None and n in rules.NAMES:
+                        run.pending.append(Pending(n, name, kraken_pair, last, bars, atr, quote, list(q.reasons), row,
+                                                   book.equity(run.marks)))
+                        waits = True
+                    else:
+                        refused = enter(book, n, name, last, atr, quote, run.infos.get(kraken_pair), list(q.reasons),
+                                        now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
+                                        book.equity(run.marks), c, spec.p, run.costs, run.lim, run.extra[n])
+                if not waits:
+                    _conclude(run, n, name, last, bars, atr, quote, refused, row)
             run.seen.setdefault(n, {})[name] = row
             book.meta["last_bar"][name] = last.t
             run.touched.add(n)
@@ -316,6 +339,83 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
             run.failed[f"{n}:{name}"] = str(e)[:60]
         except Exception as e:  # noqa: BLE001 — as above
             run.failed[f"{n}:{name}"] = e.__class__.__name__
+
+
+def _conclude(run: Run, n: str, name: str, last: Bar, bars: list[Bar], atr: float, quote: Quote | None,
+              refused: list[str], row: dict[str, Any]) -> dict[str, Any]:
+    """What follows an entry or a refusal: the journal's `refused` row, the cycle's own row, the signal's record."""
+    book = run.books[n]
+    if refused:
+        book.note({"kind": "refused", "t": _iso(run.now), "pair": name, "bar": last.t, "why": refused, **run.extra[n]})
+        row["refused"] = refused
+    else:
+        row["entered"] = True
+        if run.step_s != 60:
+            # Coarser fine bars: the one that opens at the signal bar's close is the first to examine.
+            book.positions[name].checked_to = int(run.now) - run.step_s
+    rec = _signal(run, n, name, last, bars, atr, quote, refused)
+    run.signalled.append((n, rec))
+    return rec
+
+
+def _held(run: Run, n: str, name: str) -> bool:
+    """Whether another sleeve holds the pair. An entry that waits for the model counts as held: to every other
+    sleeve the cycle must look as it would with no model, where that entry was already made."""
+    return (any(name in run.books[m].positions for m in run.names if m != n)
+            or any(p.pair == name and p.sleeve != n for p in run.pending))
+
+
+def _breadth(run: Run, n: str, bar: int) -> float:
+    """How many pairs met this sleeve's rule on the same bar."""
+    return float(sum(1 for v in run.seen.get(n, {}).values() if v.get("fire") and v.get("bar") == bar))
+
+
+def _scored(rec: dict[str, Any], got: Any, k: int, lineage: str) -> None:
+    rec.update(score=got.scores[k], model=got.version, lineage=lineage, cutoff=got.cutoff, half_below=got.half_below)
+
+
+def settle(run: Run) -> None:
+    """The entries that waited for the model (DEC-0016, 4), once every pair has been looked at: each signal is
+    scored on its inputs as they stand, then skipped, bought at half size, or bought as its rule says. If the
+    scorer gives no answer every one of them is bought as its rule says. Nothing here can add or enlarge a trade."""
+    waiting = list(run.pending)
+    if not waiting or run.scorer is None:
+        run.pending = []
+        return
+    got, drafts = None, []
+    try:
+        # The inputs as they stand before any of these entries is made. `run.pending` is still full here, so
+        # "held elsewhere" reads as it would with no model.
+        drafts = [_signal(run, p.sleeve, p.pair, p.last, p.bars, p.atr, p.quote, ["pending"]) for p in waiting]
+        for p, d in zip(waiting, drafts, strict=True):
+            d["inputs"]["breadth"] = _breadth(run, p.sleeve, p.last.t)
+        got, why = run.scorer(drafts)
+    except Exception as e:  # noqa: BLE001 — the scorer never stops a trade
+        got, why = None, e.__class__.__name__
+    if got is None:
+        run.model_fault = why or "failed"
+    run.pending = []
+    for k, p in enumerate(waiting):
+        # One entry's fault must not stop the others or the cycle's end: as in `step_pair`, it is named and the
+        # bar is looked at again by the next cycle.
+        try:
+            book, spec = run.books[p.sleeve], run.specs[p.sleeve]
+            factor = 1.0 if got is None else float(got.factor(k))
+            if factor <= 0:
+                refused = ["model_skip"]
+            else:
+                refused = enter(book, p.sleeve, p.pair, p.last, p.atr, p.quote, run.infos.get(p.kraken_pair), p.reasons,
+                                run.now, run.day, run.desk, risk.sleeve_dir(run.desk, p.sleeve), run.pairs,
+                                p.equity, spec.c, spec.p, run.costs, run.lim, run.extra[p.sleeve], factor)
+            rec = _conclude(run, p.sleeve, p.pair, p.last, p.bars, p.atr, p.quote, refused, p.row)
+            if got is not None:
+                rec["inputs"] = drafts[k]["inputs"]         # the inputs the score was computed from
+                _scored(rec, got, k, run.lineage)
+                rec["acted"] = factor
+        except Exception as e:  # noqa: BLE001
+            run.failed[f"{p.sleeve}:{p.pair}"] = e.__class__.__name__
+            run.books[p.sleeve].meta["last_bar"].pop(p.pair, None)
+            run.seen.get(p.sleeve, {}).pop(p.pair, None)
 
 
 def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: float, quote: Quote | None,
@@ -329,7 +429,7 @@ def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: f
     else:
         price = (quote.ask if quote is not None else last.c) * (1 + float(run.costs["slippage_bps"]) / 10_000)
         stop, target, _ = rules.levels(price, atr, run.specs[sleeve].c, run.specs[sleeve].p)
-    held = any(name in run.books[m].positions for m in run.names if m != sleeve)
+    held = _held(run, sleeve, name)
     return {"kind": "signal", "sid": f"{sleeve}|{name}|{last.t}", "t": _iso(run.now), "pair": name, "bar": last.t,
             "taken": not refused, "why": list(refused), "price": round(price, 8), "stop": round(stop, 8),
             "target": None if target is None else round(target, 8), "atr": round(atr, 8),
@@ -341,10 +441,24 @@ def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: f
 def finish(run: Run, flush: Callable[[Book, Path, Path], Any], save: bool = True) -> None:
     """End of a cycle for every sleeve: the signals' rows, the loss latch, the cycle's own row, the book saved,
     the outbox written."""
+    settle(run)
     for n, rec in run.signalled:
         # How many pairs signalled for this sleeve on the same bar: known only now that all have been looked at.
-        rec["inputs"]["breadth"] = float(sum(1 for v in run.seen.get(n, {}).values()
-                                             if v.get("fire") and v.get("bar") == rec["bar"]))
+        rec["inputs"]["breadth"] = _breadth(run, n, rec["bar"])
+    # In shadow the model scores the registered sleeves' signals after the fact: recorded, acted on by nothing.
+    # Not asked again in a cycle in which it has already failed to answer: one time limit a cycle, not two.
+    shadow = [rec for n, rec in run.signalled if n in rules.NAMES and "score" not in rec]
+    if run.scorer is not None and shadow and run.model_fault is None:
+        try:
+            got, why = run.scorer(shadow)
+        except Exception as e:  # noqa: BLE001
+            got, why = None, e.__class__.__name__
+        if got is None:
+            run.model_fault = why
+        else:
+            for k, rec in enumerate(shadow):
+                _scored(rec, got, k, run.lineage)
+    for n, rec in run.signalled:
         run.books[n].note(rec)
     run.signalled = []
     for n in run.names:
@@ -371,7 +485,8 @@ def extras(cfg: dict[str, Any], specs: dict[str, rules.Spec]) -> dict[str, dict[
 
 
 def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: Alerts, started: float,
-            flush: Any, specs: dict[str, rules.Spec] | None = None, off: dict[str, str] | None = None) -> dict[str, Any]:
+            flush: Any, specs: dict[str, rules.Spec] | None = None, off: dict[str, str] | None = None,
+            scorer: Any = None, acting: bool = False, lineage: str = "") -> dict[str, Any]:
     """One cycle of every sleeve. `flush(book, book_path, journal)` is the cycle's own journal writer. `specs` are
     the sleeves to run (the registered three when not given); `off` names those among them that may not open a
     trade. Returns a summary for the cycle's log line."""
@@ -393,7 +508,8 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
         flush(books[n], risk.sleeve_dir(desk, n) / "book.json", desk.journal)        # repair, as the baseline does
     run = Run(now, desk, specs, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(common["limits"])),
               tuple(pairs), books, pair_infos(api, state, list(pairs.values()), utc_day(now), budget),
-              extras(cfg, specs), alerts, off=dict(off or {}))
+              extras(cfg, specs), alerts, off=dict(off or {}), scorer=scorer, acting=acting and scorer is not None,
+              lineage=lineage)
     # How many closed bars of each length the sleeves need. Daily bars also feed the dip rule's filter and the
     # market inputs, whatever the sleeves' own bar lengths are.
     keep: dict[int, int] = {base.daily_min: base.daily_bars}
@@ -437,5 +553,6 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
         # The last bid read for each pair, for the snapshot to value open positions with (it never calls the venue).
         state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in run.marks.items()}}
         write_atomic(state_path, json.dumps(state, sort_keys=True))
-    return {"evaluated": {n: sorted(run.seen[n]) for n in names if run.seen.get(n)}, "failed": run.failed,
+    return {"model_fault": run.model_fault,
+            "evaluated": {n: sorted(run.seen[n]) for n in names if run.seen.get(n)}, "failed": run.failed,
             "open": {n: sorted(books[n].positions) for n in names if books[n].positions}}

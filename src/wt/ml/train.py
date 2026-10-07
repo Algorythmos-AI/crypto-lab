@@ -119,6 +119,27 @@ def train_final(cfg: dict[str, Any], examples: list[dataset.Example], inputs: li
     return body, validate.platt(predict(x), a, b), (a, b)
 
 
+def quintiles(values: np.ndarray) -> list[float]:
+    """The four edges that cut the finite values into five equal parts."""
+    v = values[np.isfinite(values)]
+    return [float(q) for q in np.percentile(v, [20, 40, 60, 80])] if len(v) else []
+
+
+def drift_edges(x: np.ndarray, inputs: list[str]) -> dict[str, list[float]]:
+    """Quintile edges of every input that varies enough to have them (a 0/1 input has none)."""
+    out = {}
+    for k, name in enumerate(inputs):
+        edges = quintiles(x[:, k])
+        if len(set(edges)) == 4:
+            out[name] = edges
+    return out
+
+
+def _slim(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: d.get(k) for k in ("log_loss", "log_loss_se", "kept", "kept_mean_r", "dropped", "dropped_mean_r", "spread",
+                                  "spread_ci")}
+
+
 def report(res: dict[str, Any]) -> str:
     day = lambda t: dt.datetime.fromtimestamp(t, dt.UTC).date().isoformat()      # noqa: E731
     c = res["comparison"]
@@ -171,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline", action="store_true", help="use the cached history only")
     ap.add_argument("--register", action="store_true", help="register the chosen model for the desk")
     ap.add_argument("--out", default=None, help="write result.json and report.md into this folder")
+    ap.add_argument("--summary", default=None, help="write the run's result as one JSON file here (the weekly job)")
     a = ap.parse_args(argv)
     cfg = load_yaml("crypto.yaml")
     end = (a.end or int(time.time())) // 14_400 * 14_400
@@ -207,18 +229,31 @@ def main(argv: list[str] | None = None) -> int:
         half = float(np.percentile(scores, float(p["half_size_below_percentile"])))
         trained = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         version = f"{chosen}-{dt.datetime.now(dt.UTC):%Y%m%d}-{res['data_hash'][:8]}"
+        lineage = f"{chosen}:" + ",".join(f"{k}={v}" for k, v in sorted(settings.items()))
         res["model"] = {"version": version, "kind": kind, "settings": settings, "cutoff": cutoff, "half_below": half,
-                        "calibration": [cal_a, cal_b]}
+                        "calibration": [cal_a, cal_b], "lineage": lineage}
         if a.register:
             card = {**{k: res[k] for k in ("decision", "start", "end", "examples", "win_rate", "mean_r", "by_sleeve",
                                            "inputs", "data_hash", "importance")},
-                    "version": version, "kind": kind, "settings": settings, "trained_at": trained,
-                    "validation": {"m0": comparison["m0"], "chosen": comparison["best"][chosen]}, "state": "shadow"}
+                    "version": version, "kind": kind, "settings": settings, "trained_at": trained, "lineage": lineage,
+                    "validation": {"m0": comparison["m0"], "chosen": comparison["best"][chosen]}, "state": "shadow",
+                    # What the training data looked like, for the drift check (DEC-0016, 4): the edges that cut
+                    # each input, and the scores, into five equal parts.
+                    "drift": {"edges": drift_edges(dataset.matrix(examples, inputs), inputs), "scores": quintiles(scores)}}
             modelfile.register(DESKS["crypto"].state_dir / "models", version, kind, body, inputs, trained, cutoff, half,
-                               card, (cal_a, cal_b))
+                               card, (cal_a, cal_b), lineage)
             print(f"registered {version}")
     print(json.dumps({"chosen": chosen, "m0": comparison["m0"]["log_loss"],
                       **{k: v["log_loss"] for k, v in comparison["best"].items()}}))
+    if a.summary:
+        from pathlib import Path
+        slim = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "chosen": chosen, "model": res.get("model"),
+                **{k: res[k] for k in ("decision", "start", "end", "examples", "win_rate", "mean_r", "data_hash")},
+                "pairs": len(res["pairs"]), "effective_n": comparison["effective_n"], "attempt": comparison["attempt"],
+                "m0": _slim(comparison["m0"]), "best": {k: {"settings": v["settings"], **_slim(v)} for k, v in comparison["best"].items()},
+                "importance": res["importance"][:8]}
+        Path(a.summary).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.summary).write_text(json.dumps(slim, indent=1, sort_keys=True, default=float) + "\n")
     if a.out:
         folder = ROOT / a.out
         folder.mkdir(parents=True, exist_ok=True)

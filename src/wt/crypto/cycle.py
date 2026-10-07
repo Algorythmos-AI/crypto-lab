@@ -27,7 +27,7 @@ from typing import Any
 from wt.core import ledger
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import challengers, features, risk, rules, sleeves
+from wt.crypto import challengers, features, promotion, risk, rules, scorer, sleeves
 from wt.crypto.book import Book, Position, Rejected, utc_day
 from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
 from wt.crypto.quality import assess
@@ -218,7 +218,21 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
                         f"{e.__class__.__name__} reading the challengers' record. The registered sleeves ran. A "
                         "challenger's open position is not being watched until this is fixed.", 4)
         try:
-            s = sleeves.run_all(now, api, desk, cfg, alerts, started, flush, specs=specs, off=off)
+            # The model in force (DEC-0016, 4): none, scoring in shadow, or acting on the registered sleeves.
+            model = promotion.in_force(desk)
+            score = (lambda recs: scorer.score([promotion.model_row(r) for r in recs], desk)) if model.scoring else None
+        except Exception as e:  # noqa: BLE001 — no model is always a safe answer
+            print(f"model left out ({e.__class__.__name__})", file=sys.stderr)
+            model, score = promotion.InForce(None, None, False), None
+        try:
+            s = sleeves.run_all(now, api, desk, cfg, alerts, started, flush, specs=specs, off=off, scorer=score,
+                                acting=model.acting, lineage=model.lineage or "")
+            fault = s.get("model_fault")
+            if fault and fault not in scorer.QUIET:
+                alerts.fire("crypto:scorer-failed", "Crypto: the model did not score this cycle's signals",
+                            f"{fault}. A signal the model gave no answer for was traded as its registered rule says.", 3)
+            elif model.scoring and s.get("evaluated"):
+                alerts.resolve("crypto:scorer-failed", "Crypto: the model scores again", "The fault has cleared.")
             print(f"sleeves: evaluated {s['evaluated']} failed {sorted(s['failed'])} open {s['open']}")
             alerts.resolve("crypto:sleeves-failed", "Crypto: the tournament sleeves run again", "The fault has cleared.")
         except Exception as e:  # noqa: BLE001

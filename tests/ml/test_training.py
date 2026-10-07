@@ -223,6 +223,16 @@ class Training(unittest.TestCase):
             self.assertTrue(models.importance(name, body, inputs))
 
 
+class DriftReference(unittest.TestCase):
+    def test_the_card_records_what_the_training_data_looked_like(self) -> None:
+        self.assertEqual(train.quintiles(np.arange(1.0, 101.0)), [20.8, 40.6, 60.4, 80.2])
+        self.assertEqual(train.quintiles(np.array([np.nan, np.nan])), [])
+        x = np.column_stack([np.arange(100.0), np.arange(100.0) % 2, np.full(100, np.nan)])
+        edges = train.drift_edges(x, ["rsi", "is_trend", "spread_pct"])
+        self.assertEqual(list(edges), ["rsi"])                   # a 0/1 input and an empty one have no quintiles
+        self.assertEqual(len(edges["rsi"]), 4)
+
+
 class Calibration(unittest.TestCase):
     def test_overconfident_scores_are_pulled_back_without_changing_their_order(self) -> None:
         p = np.array([0.02, 0.2, 0.5, 0.8, 0.98])

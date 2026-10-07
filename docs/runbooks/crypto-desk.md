@@ -11,6 +11,7 @@ credentials and cannot place a real order.
 | `wt-crypto.timer` | every 15 minutes, 10 s after the bar closes | one bar cycle: data, quality, exits, entries, evidence |
 | `wt-dashboard-crypto.timer` | every 15 minutes, 1 min after the bar closes | publish the desk's snapshot |
 | `wt-crypto-challengers.timer` | every day 03:30 New York | the challengers: retire, draw at most two a week, register, backtest, admit |
+| `wt-crypto-learn.timer` | every day 04:30 New York | signal outcomes, the model's promotion tests, and once a week the retraining |
 | `wt-backup.timer` | every day 19:30 New York | verifies and anchors the crypto journal with the other ledgers |
 
 State lives in `var/crypto/`: `book.json` (the book and the cycle's bookkeeping), `crypto_journal.jsonl`
@@ -54,6 +55,23 @@ the hourly history from the second public exchange into `data/crypto/history` an
 A run that fails is retried by the next day's: the journal is the record, and a challenger registered but not
 yet judged is judged first. The timer is new with this job, so it needs one `sudo wt-install-units`.
 
+## The model
+
+`wt-crypto-learn` runs once a day at 04:30 New York time (DEC-0016, 2 to 4):
+
+1. **Outcomes.** Every recorded signal is followed to its result with its sleeve's own exits and costs, bought or
+   not, and written to the journal as an `outcome` row. Hourly history comes from the second public exchange.
+2. **The tests.** After every 60 finished signals the model in force is looked at: promoted (it then skips or
+   halves weak signals of the three registered sleeves), held, or demoted. A drift in its inputs suspends it.
+   Every change is a `model` row in the journal and one notice.
+3. **Retraining, once a week.** `.venv-ml/bin/python -m wt.ml.train --register` as its own process with a
+   75-minute limit. If no model beats taking every signal, none is in force and nothing is scored.
+
+State is in `var/crypto/models/`: `current.json` (the model in force), `promotion.json` (shadow, acting, demoted
+or suspended, and the checkpoints used), `last_train.json` (the last comparison). A model problem never stops a
+trade: no answer in 20 seconds, an error, or a model older than 14 days means the signal is traded as its rule
+says. `make crypto-learning-off` takes the model out at once.
+
 ## Pages
 
 | Page | Meaning | First step |
@@ -63,6 +81,9 @@ yet judged is judged first. The timer is new with this job, so it needs one `sud
 | Crypto: no market data | three cycles in a row read nothing from Kraken | check status.kraken.com; nothing to do while it is down. An open position is not being watched: note the day as an incident |
 | Crypto: the challengers did not run | the bar cycle could not read the challengers' record | the registered sleeves ran; `make crypto-challengers`, and `journalctl -u wt-crypto -n 50` for the fault. A challenger's open position is not watched meanwhile |
 | Crypto: challenger ... joins the tournament / retired | information: the daily run admitted or retired one | nothing to do; `make crypto-learning-off` stops all of it |
+| Crypto: the model did not score this cycle's signals | the scorer timed out, failed or its model is stale | nothing was skipped: every signal traded as its rule says. `journalctl -u wt-crypto -n 50`; a stale model means the weekly training has not registered one for 14 days |
+| Crypto: the weekly model training failed | the trainer exited, timed out or wrote no summary | the model in force is unchanged; `journalctl -u wt-crypto-learn -n 80`. It is tried again the next day |
+| Crypto: the model promoted / demoted / suspended | information: the daily tests changed what the model may do | nothing to do; the Learning panel shows the test |
 | Crypto: daily loss limit reached | realised loss hit the latch | review the day's exits on the Strategy page; `make reset-crypto-latch` when satisfied |
 | Crypto: an open position has an unobserved gap | more than 12 hours without 1-minute data while a position was open | the day is an incident for gate C2; the position is still managed |
 | Evidence chain broken: crypto entries off | the nightly check found a break in `crypto_journal.jsonl` | do not edit the file; compare with the last anchor and the restic snapshot ([backups](backups-and-lease.md)) |

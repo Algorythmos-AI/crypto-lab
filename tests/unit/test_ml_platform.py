@@ -206,3 +206,17 @@ def test_the_ml_environment_is_ignored_by_git_and_has_its_own_ci_job():
     steps = yaml.safe_dump(wf["jobs"]["ml"])
     assert "requirements-ml.lock.txt" in steps and "--require-hashes" in steps and "tests/ml" in steps
     assert "requirements-ml" not in yaml.safe_dump(wf["jobs"]["test"])       # the trading suite never installs it
+
+
+def test_a_models_lineage_is_in_its_pointer_and_the_trading_side_reads_it_without_the_ml_package(desk):
+    from wt.crypto import promotion
+    assert promotion.pointer(desk) is None
+    modelfile.register(scorer.models_dir(desk), "m1-test", "logistic", json.dumps(LOGISTIC).encode(), ["atr_pct", "rsi"],
+                       NOW.isoformat(), 0.4, 0.6, {"note": "test"}, (1.0, 0.0), "m1:C=1")
+    assert modelfile.read_pointer(scorer.models_dir(desk)).lineage == "m1:C=1"
+    got = promotion.pointer(desk)
+    assert got is not None and (got.version, got.lineage, got.trained_at) == ("m1-test", "m1:C=1", NOW.isoformat())
+    assert promotion.in_force(desk) == promotion.InForce("m1-test", "m1:C=1", False)     # registered: shadow, not acting
+    # A pointer written before lineages existed still reads: the version stands in for it.
+    register(desk)
+    assert modelfile.read_pointer(scorer.models_dir(desk)).lineage == "" and promotion.pointer(desk).lineage == "m1-test"
