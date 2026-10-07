@@ -45,14 +45,20 @@ class Position:
     atr: Decimal = Decimal(0)   # ATR of the signal bar: the unit the stop and target were set in
     high: Decimal = Decimal(0)  # highest high since entry, for a trailed stop
     bar_checked: int = 0        # open time of the last closed strategy bar examined for a bar exit
+    risk0: Decimal = Decimal(0)  # the loss at the stop when the trade opened: the R unit, whatever the stop does later
 
     @property
     def cost(self) -> Decimal:
         return self.qty * self.entry_price
 
     @property
-    def risk(self) -> Decimal:  # the loss at the stop, before fees: the R unit
+    def risk(self) -> Decimal:  # the loss at the stop as it stands now, before fees
         return self.qty * (self.entry_price - self.stop)
+
+    @property
+    def unit(self) -> Decimal:
+        """What one R is for this trade. A trailed stop shrinks `risk`; R is measured against the risk taken."""
+        return self.risk0 if self.risk0 > 0 else self.risk
 
 
 def _dec(x: Any) -> Decimal:
@@ -82,7 +88,8 @@ class Book:
             b.positions[k] = Position(p["pair"], Decimal(p["qty"]), Decimal(p["entry_price"]), Decimal(p["entry_fee"]),
                                       int(p["entry_t"]), int(p["entry_bar"]), Decimal(p["stop"]), Decimal(p["target"]),
                                       int(p["checked_to"]), str(p.get("sleeve", "")), Decimal(p.get("atr", "0")),
-                                      Decimal(p.get("high", "0")), int(p.get("bar_checked", 0)))
+                                      Decimal(p.get("high", "0")), int(p.get("bar_checked", 0)),
+                                      Decimal(p.get("risk0", "0")))
         b.realised = {k: Decimal(v) for k, v in s["realised"].items()}
         b.entries, b.orders, b.outbox = dict(s["entries"]), dict(s["orders"]), list(s["outbox"])
         b.meta = {**b.meta, **s.get("meta", {})}
@@ -132,7 +139,8 @@ class Book:
         if cost + fee > self.cash:
             raise Rejected("insufficient_cash")
         self.cash -= cost + fee
-        p = Position(pair, qty, price, fee, t, bar_t, stop, target, t - t % 60, sleeve, atr, price, bar_t)
+        p = Position(pair, qty, price, fee, t, bar_t, stop, target, t - t % 60, sleeve, atr, price, bar_t,
+                     qty * (price - stop))
         self.positions[pair] = p
         day = utc_day(t)
         self.entries[day] = self.entries.get(day, 0) + 1
@@ -151,7 +159,7 @@ class Book:
         self.realised[day] = self.realised.get(day, Decimal(0)) + pnl
         self.orders[day] = self.orders.get(day, 0) + 1
         return {"exit_price": str(px.quantize(Decimal("0.00000001"))), "fees": str((fee + p.entry_fee).quantize(CENT)),
-                "pnl": str(pnl.quantize(CENT)), "r": round(float(pnl / p.risk), 3) if p.risk > 0 else None,
+                "pnl": str(pnl.quantize(CENT)), "r": round(float(pnl / p.unit), 3) if p.unit > 0 else None,
                 "held_s": t - p.entry_t}
 
     # ---- views -----------------------------------------------------------------------------------

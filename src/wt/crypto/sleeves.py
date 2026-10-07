@@ -129,7 +129,7 @@ def _sell(book: Book, name: str, sleeve: str, pos: Position, price: float, slip:
     fill = book.sell(name, price, fee, slip, t)
     book.note({"kind": "exit", "t": _iso(t), "pair": name, "reason": reason, "qty": str(pos.qty),
                "entry_price": str(pos.entry_price), "entry_t": _iso(pos.entry_t), "entry_bar": pos.entry_bar,
-               "stop": str(pos.stop), **extra, **fill})
+               "stop": str(pos.stop), "risk0": str(pos.unit.quantize(Decimal("0.01"))), **extra, **fill})
 
 
 def manage(book: Book, sleeve: str, name: str, bars: list[Bar], minutes: list[Bar], quote: Quote, now: float,

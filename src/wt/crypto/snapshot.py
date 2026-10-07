@@ -234,6 +234,28 @@ def activity(journal: list[dict[str, Any]], obs: list[dict[str, Any]], now: dt.d
                       for k, v in sorted(daily.items())[-14:]]}
 
 
+def exit_r(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """R of every sleeve exit, by row id, measured against the risk its entry row recorded.
+
+    An exit booked before the book kept that risk divided by the stop as it stood at the exit, which overstates a
+    trailed-stop trade. The journal is never rewritten; the entry row has the risk, so R is worked out from it.
+    An exit with no matching entry keeps the R it was booked with."""
+    risk = {(r.get("sleeve"), r.get("pair"), r.get("t")): v for r in rows
+            if r.get("kind") == "entry" and r.get("sleeve") and (v := _f(r.get("risk")))}
+    out: dict[str, float] = {}
+    for r in rows:
+        if r.get("kind") != "exit" or not r.get("sleeve"):
+            continue
+        unit, pnl = risk.get((r.get("sleeve"), r.get("pair"), r.get("entry_t"))), _f(r.get("pnl"))
+        if r.get("risk0") is not None and isinstance(r.get("r"), int | float):
+            out[str(r.get("id"))] = float(r["r"])               # booked against the entry risk already
+        elif unit and pnl is not None:
+            out[str(r.get("id"))] = round(pnl / unit, 3)
+        elif isinstance(r.get("r"), int | float):
+            out[str(r.get("id"))] = float(r["r"])
+    return out
+
+
 def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> list[dict[str, Any]]:
     """One entry per tournament sleeve, from its own book and its own rows of the journal. Open positions are
     valued at the last bid the cycle read (the snapshot never calls the venue). Nothing is summed across sleeves."""
@@ -250,6 +272,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
     today = now.date()
     week, month = (today - dt.timedelta(days=today.weekday())).isoformat(), today.replace(day=1).isoformat()
     cutoff = (now - dt.timedelta(days=CURVE_DAYS)).isoformat()
+    fixed = exit_r(rows)
     out = []
     for name in (n for n in rules.NAMES if n in sc):
         mine = [r for r in rows if r.get("sleeve") == name]
@@ -258,7 +281,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
         equity = float(book.equity({k: float(v[0]) for k, v in marks.items()}))
         exits = [r for r in mine if r.get("kind") == "exit"]
         pnl = [(str(r.get("t", ""))[:10], v) for r in exits if (v := _f(r.get("pnl"))) is not None]
-        rs = [r["r"] for r in exits if isinstance(r.get("r"), int | float)]
+        rs = [fixed[str(r.get("id"))] for r in exits if str(r.get("id")) in fixed]
         wins = sum(v > 0 for _, v in pnl)
         run = peak = dd = 0.0
         for _, v in pnl:
@@ -272,9 +295,9 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
                 "pair": held.pair, "qty": float(held.qty), "entry_price": float(held.entry_price), "entry_time": _iso(held.entry_t),
                 "stop": float(held.stop), "target": float(held.target) if held.target.is_finite() else None,
                 "mark": float(mark[0]) if mark else None, "mark_time": _iso(mark[1]) if mark else None,
-                "unrealised": open_, "risk": float(held.risk),
+                "unrealised": open_, "risk": float(held.unit),
                 "unrealised_pct": (float(mark[0]) / float(held.entry_price) - 1) * 100 if mark else None,
-                "unrealised_r": open_ / float(held.risk) if open_ is not None and held.risk > 0 else None})
+                "unrealised_r": open_ / float(held.unit) if open_ is not None and held.unit > 0 else None})
         last_eval = next((r for r in reversed(mine) if r.get("kind") == "sleeve" and r.get("pairs")), None)
         curve = {str(r["t"])[:13]: e for r in mine if r.get("kind") == "sleeve" and str(r.get("t", "")) >= cutoff
                  and (e := _f(r.get("equity"))) is not None}
@@ -301,7 +324,8 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
             "max_dd": dd if pnl else None, "positions": positions,
             "recent": [{"pair": r.get("pair"), "entry_time": r.get("entry_t"), "exit_time": r.get("t"),
                         "entry_price": _f(r.get("entry_price")), "exit_price": _f(r.get("exit_price")),
-                        "qty": _f(r.get("qty")), "pnl": _f(r.get("pnl")), "r": r.get("r"), "reason": r.get("reason"),
+                        "qty": _f(r.get("qty")), "pnl": _f(r.get("pnl")), "r": fixed.get(str(r.get("id"))),
+                        "reason": r.get("reason"),
                         "held_min": round(r["held_s"] / 60, 1) if "held_s" in r else None} for r in exits[-20:]][::-1],
             "signals": [{"t": r.get("t"), "pair": r.get("pair"),
                          "outcome": "entered" if r["kind"] == "entry" else "refused", "why": r.get("why") or []}

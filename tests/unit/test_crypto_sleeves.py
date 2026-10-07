@@ -506,3 +506,39 @@ def test_a_fault_in_the_sleeves_view_leaves_the_baselines_snapshot_whole(crypto,
     monkeypatch.setattr(snapshot, "sleeves_view", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("bug")))
     snap = snapshot.collect(dt.datetime.fromtimestamp(NOW, dt.UTC), desk=d, cfg=CFG)
     assert snap["sleeves"] == [] and snap["book"]["equity"] == 10_000.0
+
+
+def test_r_is_measured_against_the_risk_taken_at_entry_whatever_a_trailed_stop_does(crypto):
+    d, _, _ = crypto
+    v = venue({"ETHUSD": trend_rows()})
+    run(v, crypto)
+    entry = rows_of(d, "trend", "entry")[0]
+    risk0 = Decimal(entry["risk"])
+    up = trend_rows() + [row(B0 + H4, 137.2, 143.0, 137.0, 142.5)]                   # the stop is raised on this bar
+    v.now = B0 + 2 * H4 + 10
+    v.fill("ETHUSD", up[1:], 142.5)
+    v.ohlc[("ETHUSD", 1)] = ([row(B0 + H4 + 60 * i, 140, 140.5, 139.5, 140) for i in range(1, 240)], B0 + 2 * H4 - 60)
+    run(v, crypto)
+    pos = book_of(d, "trend").positions["ETH/USD"]
+    assert pos.risk0 == risk0.quantize(pos.risk0) or abs(pos.risk0 - risk0) < Decimal("0.01")
+    assert pos.risk < pos.risk0 and pos.unit == pos.risk0                            # the stop moved; the unit did not
+    v.now += 900
+    minute = B0 + 2 * H4 + 60
+    v.ohlc[("ETHUSD", 1)] = ([row(minute, float(pos.stop) - 0.5, float(pos.stop), float(pos.stop) - 1, float(pos.stop) - 0.8)], minute)
+    run(v, crypto)
+    x = rows_of(d, "trend", "exit")[0]
+    assert x["reason"] == "stop" and x["r"] == pytest.approx(float(Decimal(x["pnl"]) / pos.risk0), abs=0.002)
+    snap = snapshot.collect(dt.datetime.fromtimestamp(v.now, dt.UTC), desk=d, cfg=CFG)
+    t = next(s for s in snap["sleeves"] if s["name"] == "trend")
+    assert t["recent"][0]["r"] == x["r"] and t["mean_r"] == x["r"]
+
+
+def test_an_exit_booked_against_a_moved_stop_is_shown_against_its_entry_risk():
+    """The desk's first TREND trade, as journalled on 2026-10-07: booked at -1.371R against the raised stop."""
+    rows = [{"id": "e", "kind": "entry", "sleeve": "trend", "pair": "AVAX/USD", "t": "2026-10-06T16:00:12+00:00",
+             "risk": "100.00"},
+            {"id": "x", "kind": "exit", "sleeve": "trend", "pair": "AVAX/USD", "entry_t": "2026-10-06T16:00:12+00:00",
+             "t": "2026-10-07T02:01:00+00:00", "pnl": "-79.88", "r": -1.371},
+            {"id": "old", "kind": "exit", "sleeve": "break", "pair": "SOL/USD", "entry_t": "nowhere", "pnl": "5", "r": 0.4},
+            {"id": "base", "kind": "exit", "pair": "BTC/USD", "pnl": "1", "r": 2.0}]
+    assert snapshot.exit_r(rows) == {"x": -0.799, "old": 0.4}                        # the baseline's rows are not touched
