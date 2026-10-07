@@ -47,37 +47,65 @@ class _Quiet:
 
 @dataclasses.dataclass
 class Market:
-    """One pair's history, ready to be read as of any moment."""
+    """One pair's history, ready to be read as of any moment, at every bar length a sleeve uses."""
     hourly: list[Bar]
-    h4: list[Bar]
-    d1: list[Bar]
     hourly_t: list[int]
-    h4_close: list[int]
-    d1_close: list[int]
+    by_tf: dict[int, tuple[list[Bar], list[int]]]       # minutes -> (bars, their close times)
 
     @classmethod
-    def of(cls, hourly: list[Bar], tf_s: int, daily_s: int) -> Market:
+    def of(cls, hourly: list[Bar], *tfs_s: int) -> Market:
         grid = fill_grid(sorted(hourly, key=lambda b: b.t), HOUR)
-        h4, d1 = aggregate(grid, HOUR, tf_s), aggregate(grid, HOUR, daily_s)
-        return cls(grid, h4, d1, [b.t for b in grid], [b.t + tf_s for b in h4], [b.t + daily_s for b in d1])
+        by = {}
+        for tf_s in sorted(set(tfs_s)):
+            bars = aggregate(grid, HOUR, tf_s)
+            by[tf_s // 60] = (bars, [b.t + tf_s for b in bars])
+        return cls(grid, [b.t for b in grid], by)
+
+    def closed(self, tf_min: int, now: int, keep: int) -> list[Bar]:
+        """The last `keep` bars of a length that had closed by `now`."""
+        bars, closes = self.by_tf[tf_min]
+        i = bisect.bisect_right(closes, now)
+        return bars[max(0, i - keep):i]
+
+    # The 4-hour and daily series by name, as the tests and the report read them.
+    @property
+    def h4(self) -> list[Bar]:
+        return self.by_tf[240][0]
+
+    @property
+    def h4_close(self) -> list[int]:
+        return self.by_tf[240][1]
+
+    @property
+    def d1(self) -> list[Bar]:
+        return self.by_tf[1440][0]
+
+    @property
+    def d1_close(self) -> list[int]:
+        return self.by_tf[1440][1]
 
 
 def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, PairInfo], start: int, end: int,
         slip_mult: float = 1.0, lim: risk.SleeveLimits | None = None,
         entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None,
-        names: list[str] | None = None) -> list[dict[str, Any]]:
+        names: list[str] | None = None, specs: dict[str, rules.Spec] | None = None) -> list[dict[str, Any]]:
     """Every 4-hour close in [start, end) as one cycle of the sleeves. `hourly` is keyed by our pair name.
-    `entry` replaces the entry rule (the random-entry control); everything after the entry is unchanged."""
-    sc = cfg["sleeves"]
-    common = sc["common"]
-    c = rules.Common.of(common)
-    tf_s, daily_s = c.timeframe_min * 60, c.daily_min * 60
-    names = names or [n for n in rules.NAMES if n in sc]
+    `specs` are the sleeves to run (the registered three when not given; `names` picks among them). `entry`
+    replaces the entry rule (the random-entry control); everything after the entry is unchanged."""
+    common = cfg["sleeves"]["common"]
+    base = rules.Common.of(common)
+    specs = specs or rules.registered(cfg)
+    if names is not None:
+        specs = {n: specs[n] for n in names}
+    names = list(specs)
+    step_s, daily_s = base.timeframe_min * 60, base.daily_min * 60
+    tfs = {step_s, daily_s, *(s.c.timeframe_min * 60 for s in specs.values())}
     pairs: dict[str, str] = {k: v for k, v in common["pairs"].items() if k in hourly}
     costs = {**cfg["costs"], "slippage_bps": float(cfg["costs"]["slippage_bps"]) * slip_mult}
     lim = lim or risk.load_sleeve_limits(str(common["limits"]))
-    markets = {k: Market.of(v, tf_s, daily_s) for k, v in hourly.items() if k in pairs}
-    closes = sorted({t for m in markets.values() for t in m.h4_close if start <= t < end})
+    markets = {k: Market.of(v, *tfs) for k, v in hourly.items() if k in pairs}
+    closes = sorted({t for m in markets.values() for t in m.by_tf[base.timeframe_min][1] if start <= t < end})
+    keep_daily = max([base.daily_bars, *(s.c.bars for s in specs.values() if s.c.timeframe_min == base.daily_min)])
     out: list[dict[str, Any]] = []
 
     def flush(book: Book, _path: Path, _journal: Path) -> None:
@@ -89,28 +117,27 @@ def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, Pair
                                    ledgers=(("crypto", Path(tmp) / "journal.jsonl"),),
                                    chain_flag=Path(tmp) / "chain-broken")
         books = {n: Book(Decimal(str(common["start_equity"])), Decimal(str(common["start_equity"]))) for n in names}
-        extra = sleeves.extras(cfg, names, c.timeframe_min)
+        extra = sleeves.extras(cfg, specs)
         last_day = ""
         for close in closes:
             now = float(close + 10)
-            cycle = sleeves.Run(now, desk, names, sc, c, costs, cfg["quality"], lim, tuple(pairs), books, infos,
-                                extra, _Quiet(), step_s=HOUR)       # type: ignore[arg-type]
+            cycle = sleeves.Run(now, desk, specs, costs, cfg["quality"], lim, tuple(pairs), books, infos, extra,
+                                _Quiet(), step_s=HOUR)       # type: ignore[arg-type]
             if entry is not None:
                 cycle.entry = entry
             if (btc := markets.get("BTC/USD")) is not None:
-                k = bisect.bisect_right(btc.d1_close, close)
-                if k >= c.daily_bars:
-                    cycle.market = signals.market(btc.d1[k - c.daily_bars:k])
+                d = btc.closed(base.daily_min, close, base.daily_bars)
+                if len(d) >= base.daily_bars:
+                    cycle.market = signals.market(d)
             if cycle.day != last_day:                               # a new UTC day: the owner would have reset it
                 last_day = cycle.day
                 for n in names:
                     (risk.sleeve_dir(desk, n) / "latch").unlink(missing_ok=True)
             for name, kraken_pair in pairs.items():
                 m = markets[name]
-                i = bisect.bisect_right(m.h4_close, close)          # 4-hour bars closed by now
-                j = bisect.bisect_right(m.d1_close, close)
-                bars, daily = m.h4[max(0, i - c.bars):i], m.d1[max(0, j - c.daily_bars):j]
-                if len(bars) < c.bars or len(daily) < c.daily_bars or bars[-1].t + tf_s != close:
+                bars = m.closed(base.timeframe_min, close, base.bars)
+                daily = m.closed(base.daily_min, close, keep_daily)
+                if len(bars) < base.bars or len(daily) < base.daily_bars or bars[-1].t + step_s != close:
                     continue                                        # not enough history yet, or no bar this close
                 price = bars[-1].c
 
@@ -121,8 +148,11 @@ def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, Pair
                     lo = bisect.bisect_right(m.hourly_t, since)
                     hi = bisect.bisect_right(m.hourly_t, close - HOUR)
                     return m.hourly[lo:hi]
+
+                def bars_of(tf: int, m: Market = m, close: int = close) -> list[Bar]:
+                    return m.closed(tf, close, max(base.bars, keep_daily))
                 try:
-                    sleeves.step_pair(cycle, name, kraken_pair, bars, daily, quote_of, minutes_of)
+                    sleeves.step_pair(cycle, name, kraken_pair, bars_of, daily[-base.daily_bars:], quote_of, minutes_of)
                 except Exception as e:  # noqa: BLE001 — recorded, as on the desk
                     cycle.failed[name] = e.__class__.__name__
             sleeves.finish(cycle, flush, save=False)

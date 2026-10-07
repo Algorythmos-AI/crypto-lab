@@ -10,7 +10,10 @@ cannot mean one thing in research and another in a session. Every number comes f
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+import dataclasses
+import hashlib
+import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +38,90 @@ class Common:
     def of(cls, c: dict[str, Any]) -> Common:
         return cls(int(c["timeframe_min"]), int(c["daily_min"]), int(c["bars"]), int(c["daily_bars"]),
                    int(c["atr_period"]), float(c["stop_atr"]), float(c["min_stop_pct"]), float(c["max_stop_pct"]))
+
+
+@dataclass(frozen=True)
+class Spec:
+    """One sleeve as the engine runs it: a base rule, its numbers, its bar length, and its filters. The three
+    registered sleeves are specs whose name is their base; a challenger (DEC-0016, 5) is a base rule with some
+    dials turned."""
+    name: str
+    base: str                   # trend | break | dip
+    c: Common
+    p: dict[str, Any]
+    hypothesis: str = ""
+    btc_filter: bool = False    # only while Bitcoin's last daily close is above its 50-day average
+    volume_filter: bool = False  # only when the signal bar's volume is above its 20-bar mean
+    skip_held: bool = False     # not when another sleeve already holds the pair
+
+
+def registered(cfg: dict[str, Any]) -> dict[str, Spec]:
+    """The sleeves DEC-0015 registered, in their order."""
+    sc = cfg["sleeves"]
+    c = Common.of(sc["common"])
+    return {n: Spec(n, n, c, dict(sc[n]), str(sc[n].get("hypothesis", ""))) for n in NAMES if n in sc}
+
+
+DIALS = ("base", "timeframe_min", "high_bars", "stop_atr", "target_atr", "trail_atr", "min_stop_pct", "btc_filter",
+         "volume_filter", "skip_held")
+
+
+def canonical(dials: dict[str, Any]) -> dict[str, Any]:
+    """A challenger's dials with the ones that do nothing for it set to None, so two settings that are the same
+    strategy are the same challenger: the dip rule has no lookback high, a target makes the trail distance
+    idle, and without a target there is only the trail."""
+    d = {k: dials.get(k) for k in DIALS}
+    if d["base"] == "dip":
+        d["high_bars"] = None
+    if d["target_atr"] in (None, "none"):
+        d["target_atr"] = None
+    else:
+        d["trail_atr"] = None
+    if d["base"] == "break":
+        d["volume_filter"] = True                            # the breakout rule already requires it
+    return d
+
+
+def challenger_id(dials: dict[str, Any]) -> str:
+    return "ch-" + hashlib.sha256(json.dumps(canonical(dials), sort_keys=True).encode()).hexdigest()[:8]
+
+
+def challenger(cfg: dict[str, Any], dials: dict[str, Any]) -> Spec:
+    """The spec of a challenger: the registered base rule with the dials' values put in place of its own."""
+    d, sc = canonical(dials), cfg["sleeves"]
+    base = str(d["base"])
+    c = dataclasses.replace(Common.of(sc["common"]), timeframe_min=int(d["timeframe_min"]), stop_atr=float(d["stop_atr"]),
+                            min_stop_pct=float(d["min_stop_pct"]))
+    p = {k: v for k, v in sc[base].items() if k not in ("target_atr", "trail_atr", "hypothesis")}
+    if d["high_bars"] is not None and "high_bars" in p:
+        p["high_bars"] = int(d["high_bars"])
+    if d["target_atr"] is not None:
+        p["target_atr"] = float(d["target_atr"])
+        p.pop("exit_below_ema", None)                        # a fixed target and stop: no trend exit
+    else:
+        p["trail_atr"] = float(d["trail_atr"])
+    return Spec(challenger_id(d), base, c, p, f"challenger of {sc[base].get('hypothesis', base)}",
+                bool(d["btc_filter"]), bool(d["volume_filter"]) and base != "break", bool(d["skip_held"]))
+
+
+Entry = Callable[..., "tuple[bool, tuple[str, ...], float | None]"]
+
+
+def evaluate(spec: Spec, bars: Sequence[Bar], daily: Sequence[Bar], market: dict[str, float | None],
+             held_elsewhere: bool, entry_rule: Entry | None = None) -> tuple[bool, tuple[str, ...], float | None]:
+    """A spec's verdict on the newest closed bar: its base rule, then its filters. A filter whose input is unknown
+    does not pass: no data, no action."""
+    fire, why, atr = (entry_rule or entry)(spec.base, bars, daily, spec.c, spec.p)
+    more = list(why)
+    if spec.btc_filter and market.get("btc_above_sma50") != 1.0:
+        more.append("btc_not_in_uptrend")
+    if spec.volume_filter:
+        vols = [b.v for b in bars[-21:-1]]
+        if len(vols) < 20 or not bars or bars[-1].v <= sum(vols) / len(vols):
+            more.append("low_volume")
+    if spec.skip_held and held_elsewhere:
+        more.append("held_elsewhere")
+    return fire and len(more) == len(why), tuple(more), atr
 
 
 def _prior_high(bars: Sequence[Bar], n: int) -> float | None:

@@ -201,9 +201,7 @@ class Run:
     backtest builds it from history. Both then call `step_pair` and `finish`, so they cannot drift apart."""
     now: float
     desk: Desk
-    names: list[str]
-    sc: dict[str, Any]
-    c: rules.Common
+    specs: dict[str, rules.Spec]        # every sleeve this cycle runs, by name, in order
     costs: dict[str, Any]
     qcfg: dict[str, Any]
     lim: risk.SleeveLimits
@@ -226,13 +224,30 @@ class Run:
     def day(self) -> str:
         return utc_day(self.now)
 
+    @property
+    def names(self) -> list[str]:
+        return list(self.specs)
 
-def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: list[Bar],
+
+def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], list[Bar]], daily: list[Bar],
               quote_of: Callable[[], Quote], minutes_of: Callable[[int], list[Bar]],
               observe: Callable[[dict[str, Any]], None] | None = None) -> None:
-    """One pair, every sleeve: exits for those that hold it, then the newest closed bar as a possible entry.
-    `quote_of` and `minutes_of(since)` are asked only when needed. A DataError from them is the caller's."""
-    c, now = run.c, run.now
+    """One pair, every sleeve: exits for those that hold it, then each sleeve's newest closed bar as a possible
+    entry. `bars_of(timeframe_min)` gives the closed bars of a sleeve's own bar length; `quote_of` and
+    `minutes_of(since)` are asked only when needed. A DataError for the whole pair is the caller's; a sleeve
+    whose own bars cannot be had is skipped and named."""
+    now = run.now
+    cache: dict[int, list[Bar]] = {}
+
+    def bars_for(spec: rules.Spec) -> list[Bar]:
+        tf = spec.c.timeframe_min
+        if tf not in cache:
+            cache[tf] = bars_of(tf)
+        got = cache[tf][-spec.c.bars:]
+        if len(got) < spec.c.bars:
+            raise DataError(f"{tf}m bars: too few")
+        return got
+
     holders = [n for n in run.names if name in run.books[n].positions]
     quote: Quote | None = None
     if holders:
@@ -241,19 +256,27 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: lis
         minutes = minutes_of(min(run.books[n].positions[name].checked_to for n in holders))
         for n in holders:
             try:
-                manage(run.books[n], n, name, bars, minutes, quote, now, c, run.sc[n], run.costs,
+                spec = run.specs[n]
+                manage(run.books[n], spec.base, name, bars_for(spec), minutes, quote, now, spec.c, spec.p, run.costs,
                        run.infos.get(kraken_pair), run.extra[n], run.alerts, run.step_s)
                 run.touched.add(n)
+            except DataError as e:
+                if str(e) == "budget":
+                    raise
+                run.failed[f"{n}:{name}"] = str(e)[:60]
             except Exception as e:  # noqa: BLE001 — one position's fault must not stop the others
                 run.failed[f"{n}:{name}"] = e.__class__.__name__
-    last = bars[-1]
-    fresh = 0 <= now - (last.t + c.timeframe_min * 60) <= FRESH_S
     for n in run.names:
-        book = run.books[n]
-        if book.meta["last_bar"].get(name) == last.t:
-            continue                            # this bar was evaluated by an earlier run
+        book, spec = run.books[n], run.specs[n]
+        c = spec.c
         try:
-            fire, why, atr = (run.entry or rules.entry)(n, bars, daily, c, run.sc[n])
+            bars = bars_for(spec)
+            last = bars[-1]
+            if book.meta["last_bar"].get(name) == last.t:
+                continue                        # this bar was evaluated by an earlier run
+            fresh = 0 <= now - (last.t + c.timeframe_min * 60) <= FRESH_S
+            held = any(name in run.books[m].positions for m in run.names if m != n)
+            fire, why, atr = rules.evaluate(spec, bars, daily, run.market, held, run.entry)
             row: dict[str, Any] = {"bar": last.t, "fire": fire, "why": list(why)}
             if observe is not None:
                 observe({"t": last.t, "pair": name, "sleeve": n, "tf": c.timeframe_min, "close": last.c,
@@ -270,7 +293,7 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: lis
                     q = assess(bars, quote, now, c.timeframe_min, run.qcfg)
                     refused = enter(book, n, name, last, atr, quote, run.infos.get(kraken_pair), list(q.reasons),
                                     now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
-                                    book.equity(run.marks), c, run.sc[n], run.costs, run.lim, run.extra[n])
+                                    book.equity(run.marks), c, spec.p, run.costs, run.lim, run.extra[n])
                 if refused:
                     book.note({"kind": "refused", "t": _iso(now), "pair": name, "bar": last.t, "why": refused,
                                **run.extra[n]})
@@ -284,8 +307,10 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars: list[Bar], daily: lis
             run.seen.setdefault(n, {})[name] = row
             book.meta["last_bar"][name] = last.t
             run.touched.add(n)
-        except DataError:
-            raise
+        except DataError as e:
+            if str(e) == "budget" or not cache:
+                raise                           # out of budget, or the pair has no bars at all: the caller's
+            run.failed[f"{n}:{name}"] = str(e)[:60]
         except Exception as e:  # noqa: BLE001 — as above
             run.failed[f"{n}:{name}"] = e.__class__.__name__
 
@@ -300,13 +325,13 @@ def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: f
         target = float(pos.target) if pos.target.is_finite() else None
     else:
         price = (quote.ask if quote is not None else last.c) * (1 + float(run.costs["slippage_bps"]) / 10_000)
-        stop, target, _ = rules.levels(price, atr, run.c, run.sc[sleeve])
+        stop, target, _ = rules.levels(price, atr, run.specs[sleeve].c, run.specs[sleeve].p)
     held = any(name in run.books[m].positions for m in run.names if m != sleeve)
     return {"kind": "signal", "sid": f"{sleeve}|{name}|{last.t}", "t": _iso(run.now), "pair": name, "bar": last.t,
             "taken": not refused, "why": list(refused), "price": round(price, 8), "stop": round(stop, 8),
             "target": None if target is None else round(target, 8), "atr": round(atr, 8),
             "inputs": signals.inputs(bars, price, stop, atr, None if quote is None else quote.spread_pct,
-                                     run.market, held, run.c.timeframe_min),
+                                     run.market, held, run.specs[sleeve].c.timeframe_min),
             **run.extra[sleeve]}
 
 
@@ -335,20 +360,21 @@ def finish(run: Run, flush: Callable[[Book, Path, Path], Any], save: bool = True
         flush(book, folder / "book.json", run.desk.journal)
 
 
-def extras(cfg: dict[str, Any], names: list[str], tf: int) -> dict[str, dict[str, Any]]:
-    """What every journal row of a sleeve carries."""
-    return {n: {"sleeve": n, "strategy": str(cfg["sleeves"][n]["hypothesis"]), "tf": tf, "stage": STAGE,
-                "config": sleeve_hash(cfg, n)} for n in names}
+def extras(cfg: dict[str, Any], specs: dict[str, rules.Spec]) -> dict[str, dict[str, Any]]:
+    """What every journal row of a sleeve carries. A registered sleeve's `config` is the hash of its frozen
+    rules; a challenger's name is already the hash of its dials."""
+    return {n: {"sleeve": n, "strategy": s.hypothesis, "tf": s.c.timeframe_min, "stage": STAGE,
+                "config": sleeve_hash(cfg, n) if n in cfg["sleeves"] else n} for n, s in specs.items()}
 
 
 def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: Alerts, started: float,
-            flush: Any) -> dict[str, Any]:
-    """One cycle of every sleeve. `flush(book, book_path, journal)` is the cycle's own journal writer.
-    Returns a summary for the cycle's log line."""
-    sc = cfg["sleeves"]
-    common = sc["common"]
-    c = rules.Common.of(common)
-    names = [n for n in rules.NAMES if n in sc]
+            flush: Any, specs: dict[str, rules.Spec] | None = None) -> dict[str, Any]:
+    """One cycle of every sleeve. `flush(book, book_path, journal)` is the cycle's own journal writer. `specs` are
+    the sleeves to run (the registered three when not given). Returns a summary for the cycle's log line."""
+    common = cfg["sleeves"]["common"]
+    specs = specs or rules.registered(cfg)
+    names = list(specs)
+    base = rules.Common.of(common)
     pairs: dict[str, str] = dict(common["pairs"])
     budget = Budget(api, started)
     state_path = desk.state_dir / "sleeves" / "data.json"
@@ -361,9 +387,14 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
     books = {n: Book.load(risk.sleeve_dir(desk, n) / "book.json", Decimal(str(common["start_equity"]))) for n in names}
     for n in names:
         flush(books[n], risk.sleeve_dir(desk, n) / "book.json", desk.journal)        # repair, as the baseline does
-    run = Run(now, desk, names, sc, c, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(common["limits"])),
+    run = Run(now, desk, specs, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(common["limits"])),
               tuple(pairs), books, pair_infos(api, state, list(pairs.values()), utc_day(now), budget),
-              extras(cfg, names, c.timeframe_min), alerts)
+              extras(cfg, specs), alerts)
+    # How many closed bars of each length the sleeves need. Daily bars also feed the dip rule's filter and the
+    # market inputs, whatever the sleeves' own bar lengths are.
+    keep: dict[int, int] = {base.daily_min: base.daily_bars}
+    for s in specs.values():
+        keep[s.c.timeframe_min] = max(keep.get(s.c.timeframe_min, 0), s.c.bars)
 
     def observe(rec: dict[str, Any]) -> None:
         _append(desk.state_dir / "observations" / f"sleeve-{utc_day(rec['t'])}.jsonl", rec)
@@ -371,7 +402,8 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
     try:
         # The wider market for the signals' inputs: Bitcoin's daily bars, already in the store on most cycles.
         if "BTC/USD" in pairs:
-            run.market = signals.market(series(api, desk, state, pairs["BTC/USD"], c.daily_min, c.daily_bars, now, budget))
+            btc = series(api, desk, state, pairs["BTC/USD"], base.daily_min, keep[base.daily_min], now, budget)
+            run.market = signals.market(btc[-base.daily_bars:])
     except Exception:  # noqa: BLE001 — a signal without its market inputs is still a signal
         run.market = {}
     try:
@@ -383,10 +415,13 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
             def minutes_of(since: int, kraken_pair: str = kraken_pair) -> list[Bar]:
                 budget.spend()
                 return api.ohlc(kraken_pair, 1, since=since)
+
+            def bars_of(tf: int, kraken_pair: str = kraken_pair) -> list[Bar]:
+                return series(api, desk, state, kraken_pair, tf, keep[tf], now, budget)
             try:
-                bars = series(api, desk, state, kraken_pair, c.timeframe_min, c.bars, now, budget)
-                daily = series(api, desk, state, kraken_pair, c.daily_min, c.daily_bars, now, budget)
-                step_pair(run, name, kraken_pair, bars, daily, quote_of, minutes_of, observe)
+                bars_of(base.timeframe_min)                 # no bars of the desk's own length: the pair has no data
+                daily = bars_of(base.daily_min)[-base.daily_bars:]
+                step_pair(run, name, kraken_pair, bars_of, daily, quote_of, minutes_of, observe)
             except DataError as e:
                 run.failed[name] = str(e)[:80]
                 if str(e) == "budget":
