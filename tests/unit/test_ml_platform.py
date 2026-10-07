@@ -188,6 +188,37 @@ def test_a_new_ml_environment_is_built_beside_the_live_one_and_a_failed_build_le
         assert name in (ROOT / ".gitignore").read_text().split()
 
 
+def test_the_swap_waits_for_the_learning_job_and_a_built_environment_is_not_built_twice(tmp_path, monkeypatch):
+    from wt.ops import locks
+    calls: list[tuple] = []
+    monkeypatch.setattr(deploy, "ROOT", tmp_path)
+    monkeypatch.setattr(locks, "LOCK_DIR", tmp_path / "locks")
+    monkeypatch.setattr(deploy, "Alerts", lambda: type("A", (), {"fire": lambda *a, **k: calls.append(("fire", a[2])),
+                                                                "resolve": lambda *a, **k: calls.append(("resolve",))})())
+    lock, live = tmp_path / "requirements-ml.lock.txt", tmp_path / ".venv-ml"
+    lock.write_text("lightgbm==4.7.0 --hash=sha256:aa\n")
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
+    assert deploy.sync_ml() == "synced"
+    lock.write_text("lightgbm==4.8.0 --hash=sha256:bb\n")
+    calls.clear()
+    with locks.job_lock("crypto-learn") as training:                     # the weekly retraining is running in it
+        assert training
+        assert deploy.sync_ml(swap_wait_s=0.0) == "pending"
+        assert "4.7.0" in (live / "built-from").read_text()             # it keeps the environment it started in
+        assert "4.8.0" in (tmp_path / ".venv-ml.next" / "built-from").read_text()
+        assert calls == [("venv", "--quiet"), ("pip", "sync"), ("fire", "ML environment built, not yet in use")]
+    calls.clear()
+    assert deploy.sync_ml() == "synced" and calls == [("resolve",)]     # only the swap was left: nothing is rebuilt
+    assert "4.8.0" in (live / "built-from").read_text() and not (tmp_path / ".venv-ml.next").exists()
+    assert not locks.is_held("crypto-learn") and not locks.is_held(deploy.ML_ENV_LOCK)
+    # Two builds never run at once, and the second does not wait for the first.
+    lock.write_text("lightgbm==4.9.0 --hash=sha256:cc\n")
+    calls.clear()
+    with locks.job_lock(deploy.ML_ENV_LOCK):
+        assert deploy.sync_ml() == "busy" and calls == []
+    assert "crypto-learn" in deploy.JOBS and all(n in deploy.JOBS for n in deploy.ML_USERS)
+
+
 def test_the_ml_lock_is_part_of_the_checked_code_and_of_the_audit():
     import yaml
 
