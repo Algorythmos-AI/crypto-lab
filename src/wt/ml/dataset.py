@@ -39,7 +39,12 @@ class Example:
 
 def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: int) -> list[Example]:
     """Every signal in [start, end) on every pair of `hourly`, oldest first. A signal whose outcome is not known
-    by the end of the data is left out: it has no label yet."""
+    by the end of the data is left out: it has no label yet.
+
+    `breadth` is what the desk records (`wt.crypto.sleeves.finish`): how many of the *traded* pairs met the
+    sleeve's rule on that bar, whether or not their stop distance let them trade. A pair used for training only
+    is never counted, so the input means the same thing in history as it does live; on such a pair's own signal
+    it can be 0, which a live signal never sees."""
     sc = cfg["sleeves"]
     c = rules.Common.of(sc["common"])
     tf_s, daily_s = c.timeframe_min * 60, c.daily_min * 60
@@ -50,6 +55,8 @@ def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: in
     d1 = {k: aggregate(g, HOUR, daily_s) for k, g in grids.items()}
     fine_t = {k: [b.t for b in g] for k, g in grids.items()}
     d1_close = {k: [b.t + daily_s for b in v] for k, v in d1.items()}
+    traded = set(sc["common"]["pairs"])
+    fired: dict[tuple[str, int], int] = {}
     found: list[tuple[str, str, int, int, float, float, float | None, float]] = []
     for pair, bars in h4.items():
         for i in range(c.bars - 1, len(bars)):
@@ -64,15 +71,14 @@ def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: in
                 continue
             for n in names:
                 fire, _, atr = rules.entry(n, window, daily, c, sc[n])
+                if fire and pair in traded:
+                    fired[(n, close)] = fired.get((n, close), 0) + 1     # as the desk counts: before the levels
                 if not fire or atr is None:
                     continue
                 price = window[-1].c * (1 + slip)
                 stop, target, skip = rules.levels(price, atr, c, sc[n])
                 if skip is None:
                     found.append((n, pair, i, close, price, stop, target, atr))
-    breadth: dict[tuple[str, int], int] = {}
-    for n, _, _, close, *_ in found:
-        breadth[(n, close)] = breadth.get((n, close), 0) + 1
     btc = d1.get("BTC/USD")
     out: list[Example] = []
     for n, pair, i, close, price, stop, target, atr in found:
@@ -91,7 +97,7 @@ def build(cfg: dict[str, Any], hourly: dict[str, list[Bar]], start: int, end: in
             if k >= c.daily_bars:
                 context = signals.market(btc[k - c.daily_bars:k])
         x = signals.inputs(bars[i + 1 - c.bars:i + 1], price, stop, atr, None, context, False, c.timeframe_min)
-        x["breadth"] = float(breadth[(n, close)])
+        x["breadth"] = float(fired.get((n, close), 0))
         out.append(Example(f"{n}|{pair}|{bars[i].t}", n, pair, close, int(res["exit_t"]), x, float(res["r"]),
                            str(res["reason"])))
     return sorted(out, key=lambda e: (e.t, e.sleeve, e.pair))
@@ -103,12 +109,23 @@ def uniqueness(examples: list[Example], step_s: int) -> np.ndarray:
     if not examples:
         return np.zeros(0)
     t0 = min(e.t for e in examples)
-    span = [(max(0, (e.t - t0) // step_s), max(1, (e.exit_t - t0) // step_s)) for e in examples]
+    span = []
+    for e in examples:
+        a = (e.t - t0) // step_s
+        # Up to the step its outcome falls in, and never empty: a trade stopped out inside its first bar still
+        # shared that bar with every other trade open then. (An empty span once gave such a trade full weight,
+        # twenty times a normal one.)
+        span.append((a, max(a + 1, -(-(e.exit_t - t0) // step_s))))
     count = np.zeros(max(b for _, b in span) + 1)
     for a, b in span:
         count[a:b] += 1
-    w = np.array([float(np.mean(1.0 / count[a:b])) if b > a else 1.0 for a, b in span])
+    w = np.array([float(np.mean(1.0 / count[a:b])) for a, b in span])
     return w / w.mean()
+
+
+def effective_n(w: np.ndarray) -> float:
+    """How many equally weighted examples the weights are worth (Kish)."""
+    return float(w.sum() ** 2 / (w ** 2).sum()) if len(w) and (w ** 2).sum() > 0 else 0.0
 
 
 def matrix(examples: list[Example], names: list[str]) -> np.ndarray:

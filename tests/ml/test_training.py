@@ -75,6 +75,108 @@ class Validation(unittest.TestCase):
         self.assertLess(w[0], w[-1])
         self.assertAlmostEqual(float(w.mean()), 1.0, places=6)
 
+    def test_a_trade_stopped_inside_its_first_bar_weighs_no_more_than_the_trades_it_overlapped(self) -> None:
+        x = examples(1)[0].inputs
+        crowd = [dataset.Example(f"c{i}", "break", "Y/USD", T0, T0 + 40 * H4, x, 1.0, "target") for i in range(10)]
+        quick = dataset.Example("quick", "trend", "Z/USD", T0 + 8 * H4, T0 + 8 * H4 + 3600, x, -1.0, "stop")
+        alone = dataset.Example("alone", "break", "Z/USD", T0 + 400 * H4, T0 + 410 * H4, x, 1.0, "target")
+        w = dataset.uniqueness([*crowd, quick, alone], H4)
+        self.assertLess(w[10], w[-1])                            # it shared its bar with ten open trades
+        self.assertLess(w[10], w[0])
+        # Whatever the holding periods, no example can outweigh one that has the market to itself.
+        rng = np.random.default_rng(3)
+        many = [dataset.Example(f"m{i}", "dip", "X/USD", T0 + int(rng.integers(0, 200)) * H4, 0, x, 1.0, "stop")
+                for i in range(300)]
+        many = [dataset.Example(e.sid, e.sleeve, e.pair, e.t, e.t + int(rng.integers(1, 80)) * 3600, x, 1.0, "stop")
+                for e in many]
+        w = dataset.uniqueness([*many, alone], H4)
+        self.assertAlmostEqual(float(w.max()), float(w[-1]), places=9)
+        self.assertGreater(dataset.effective_n(w), 30)
+
+    def test_a_fold_with_too_little_to_train_on_is_not_scored(self) -> None:
+        ex = examples(300)
+        sizes = [len(tr) for tr, _ in validate.folds(ex, 5, 0, min_train=120)]
+        self.assertTrue(sizes and all(n >= 120 for n in sizes))
+        self.assertLess(len(sizes), len(list(validate.folds(ex, 5, 0, min_train=1))))
+
+    def test_the_kept_minus_skipped_difference_comes_with_an_interval_over_days(self) -> None:
+        rng = np.random.default_rng(1)
+        days = np.repeat(np.arange(120), 5)
+        keep = rng.random(600) < 0.6
+        real = validate.spread(np.where(keep, 0.5, -0.5) + rng.normal(0, 1, 600), keep, days)
+        self.assertGreater(real["spread_ci"][0], 0)
+        self.assertLess(real["spread_p"], 0.01)
+        none = validate.spread(rng.normal(0, 1, 600), keep, days)
+        self.assertLess(none["spread_ci"][0], 0)
+        self.assertGreater(none["spread_ci"][1], 0)
+        # One good day is not evidence: the same total concentrated in a single day leaves the interval on zero.
+        r = np.zeros(600)
+        r[(days == 7) & keep] = 40.0
+        self.assertLessEqual(validate.spread(r, keep, days)["spread_ci"][0], 0)
+        self.assertIsNone(validate.spread(r, np.ones(600, dtype=bool), days)["spread"])
+
+
+class Universe(unittest.TestCase):
+    def test_breadth_counts_the_traded_pairs_that_fired_as_the_desk_does(self) -> None:
+        from unittest import mock
+
+        from wt.crypto import rules
+        from wt.crypto.data import Bar
+        c = rules.Common.of(CFG["sleeves"]["common"])
+        n = (c.daily_bars + 30) * 24
+        rng = np.random.default_rng(2)
+
+        def hourly(seed: int) -> list[Bar]:
+            px = 100 * np.exp(np.cumsum(np.random.default_rng(seed).normal(0, 0.004, n)))
+            return [Bar(T0 + i * 3600, float(p), float(p * 1.004), float(p * 0.996), float(p), float(p), 10.0, 5)
+                    for i, p in enumerate(px)]
+        traded = list(CFG["sleeves"]["common"]["pairs"])[:3]
+        data = {**{p: hourly(k) for k, p in enumerate(traded)}, "LTC/USD": hourly(9), "DOT/USD": hourly(10)}
+        self.assertNotIn("LTC/USD", CFG["sleeves"]["common"]["pairs"])
+        fire_all = lambda name, *_a, **_k: (name == "break", (), 1.5)            # noqa: E731
+        del rng
+        with mock.patch.object(rules, "entry", fire_all):
+            ex = dataset.build(CFG, data, T0, T0 + n * 3600)
+        self.assertTrue(ex)
+        self.assertEqual({e.pair for e in ex}, set(data))
+        # Five pairs fire on every bar; only the three traded ones count, on a training-only pair's signal too.
+        self.assertEqual({e.inputs["breadth"] for e in ex}, {3.0})
+
+    def test_a_pair_that_fails_to_load_is_retried_and_named_and_a_shrunken_universe_stops_the_run(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        from wt.crypto.data import Bar, DataError
+        long = [Bar(T0, 1, 1, 1, 1, 1, 1, 1), Bar(T0 + 600 * DAY, 1, 1, 1, 1, 1, 1, 1)]
+        calls: dict[str, int] = {}
+
+        def load(pair: str, *_a: object) -> list[Bar]:
+            calls[pair] = calls.get(pair, 0) + 1
+            if pair == "FLAKY/USD" and calls[pair] < 3:
+                raise DataError("candles: HTTPError")
+            if pair == "DEAD/USD":
+                raise DataError("candles: HTTPError")
+            return {"EMPTY/USD": [], "SHORT/USD": long[:1]}.get(pair, long)
+        out = io.StringIO()
+        with mock.patch.object(train, "load_hourly", load), mock.patch.object(train, "CoinbasePublic", lambda: None), \
+                contextlib.redirect_stdout(out):
+            got = train.history(["OK/USD", "FLAKY/USD", "DEAD/USD", "EMPTY/USD", "SHORT/USD"], T0, T0 + DAY, False,
+                                sleep=lambda _s: None)
+        self.assertEqual(set(got), {"OK/USD", "FLAKY/USD"})
+        self.assertEqual(calls["DEAD/USD"], train.FETCH_TRIES)
+        said = out.getvalue()
+        self.assertIn("DEAD/USD: skipped (the fetch failed", said)
+        self.assertIn("EMPTY/USD: skipped (the exchange returned no bars", said)
+        self.assertIn("SHORT/USD: skipped (under 18 months", said)
+        traded = list(CFG["sleeves"]["common"]["pairs"])
+        every = {p: long for p in CFG["learning"]["training_pairs"]}
+        train.check_universe(CFG, every)
+        with self.assertRaisesRegex(train.TooFewPairs, "traded pairs"):
+            train.check_universe(CFG, {p: v for p, v in every.items() if p != traded[0]})
+        with self.assertRaisesRegex(train.TooFewPairs, "training pairs loaded"):
+            train.check_universe(CFG, {p: long for p in traded})
+
 
 class Training(unittest.TestCase):
     def test_a_real_pattern_is_found_out_of_sample_and_noise_is_not(self) -> None:

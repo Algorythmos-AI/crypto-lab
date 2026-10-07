@@ -27,22 +27,49 @@ from wt.ml import dataset, modelfile, models, validate
 
 MIN_HISTORY_D = 548             # 18 months of hourly bars, or the pair is not used for training (DEC-0016)
 ORDER = ("m1", "m2")            # simplest first
+FETCH_TRIES, FETCH_PAUSE_S = 3, 5.0
+MIN_PAIRS_SHARE = 0.8           # of learning.training_pairs; below it the run stops instead of training on less
 
 
-def history(pairs: list[str], start: int, end: int, offline: bool) -> dict[str, list[Any]]:
+class TooFewPairs(RuntimeError):
+    """The training universe did not load: a result from it would not be the charter's experiment."""
+
+
+def history(pairs: list[str], start: int, end: int, offline: bool, sleep: Any = time.sleep) -> dict[str, list[Any]]:
+    """Hourly bars per pair. A pair that fails to load is tried again (a public endpoint has bad minutes), and the
+    reason a pair is left out says which of three things happened: the fetch failed, there is nothing for it, or
+    it has under 18 months of bars."""
     client = None if offline else CoinbasePublic()
     out: dict[str, list[Any]] = {}
     for pair in pairs:
-        try:
-            bars = load_hourly(pair, start - WARMUP_D * DAY, end, client)
-        except DataError as e:
-            print(f"history {pair}: skipped ({e})")
-            continue
-        if bars and (bars[-1].t - bars[0].t) >= MIN_HISTORY_D * DAY:
+        bars, why = [], None
+        for attempt in range(1 if offline else FETCH_TRIES):
+            try:
+                bars, why = load_hourly(pair, start - WARMUP_D * DAY, end, client), None
+                break
+            except DataError as e:
+                why = f"the fetch failed ({e})"
+                sleep(FETCH_PAUSE_S * (attempt + 1))
+        if why is None and not bars:
+            why = "nothing cached for it" if offline else "the exchange returned no bars for it"
+        elif why is None and (bars[-1].t - bars[0].t) < MIN_HISTORY_D * DAY:
+            why = "under 18 months of bars"
+        if why is None:
             out[pair] = bars
         else:
-            print(f"history {pair}: skipped (under 18 months of bars)")
+            print(f"history {pair}: skipped ({why})")
     return out
+
+
+def check_universe(cfg: dict[str, Any], loaded: dict[str, list[Any]]) -> None:
+    """Every traded pair, and most of the training pairs, or no run: a universe that quietly shrank (seven pairs
+    were once lost to a failed fetch and reported as short histories) is a different experiment."""
+    missing = sorted(set(cfg["sleeves"]["common"]["pairs"]) - set(loaded))
+    if missing:
+        raise TooFewPairs(f"traded pairs without history: {', '.join(missing)}")
+    wanted = len(cfg["learning"]["training_pairs"])
+    if len(loaded) < MIN_PAIRS_SHARE * wanted:
+        raise TooFewPairs(f"only {len(loaded)} of {wanted} training pairs loaded")
 
 
 def compare(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[str]) -> dict[str, Any]:
@@ -65,7 +92,8 @@ def compare(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[s
     bar = top["log_loss"] + (top["log_loss_se"] or 0.0)
     chosen = next((k for k in ORDER if best[k]["log_loss"] <= bar and best[k]["log_loss"] < m0["log_loss"]), None)
     return {"m0": m0, "tried": tried, "best": best, "chosen": chosen, "embargo_days": embargo // DAY, "folds": n,
-            "calibration": "platt, 3 inner purged folds (DEC-0017)", "attempt": 2}
+            "calibration": "platt, 3 inner purged folds (DEC-0017)", "attempt": 3,
+            "effective_n": round(dataset.effective_n(w), 1)}
 
 
 def _fit(cfg: dict[str, Any], kind: str, settings: dict[str, Any]) -> validate.Fit:
@@ -95,19 +123,26 @@ def report(res: dict[str, Any]) -> str:
     day = lambda t: dt.datetime.fromtimestamp(t, dt.UTC).date().isoformat()      # noqa: E731
     c = res["comparison"]
     lines = [f"# {res['id']}: crypto desk, the first models", "",
-             f"- Decision: DEC-0016. Training set: {res['examples']} signals from {len(res['pairs'])} pairs, "
+             f"- Decision: {res['decision']} (DEC-0016 as amended). Training set: {res['examples']} signals from {len(res['pairs'])} pairs, "
              f"{day(res['start'])} to {day(res['end'])} (data hash `{res['data_hash']}`).",
              f"- Win rate of all signals after costs: {res['win_rate'] * 100:.1f}%. Mean R: {res['mean_r']:+.3f}.",
              f"- Validation: {c['folds']} purged walk-forward folds, embargo {c['embargo_days']} days. "
              f"Inputs used: {len(res['inputs'])}.",
-             f"- Calibration: {c.get('calibration', 'none')}. This is attempt {c.get('attempt', 1)} at model selection.", "",
+             f"- Calibration: {c.get('calibration', 'none')}. This is attempt {c.get('attempt', 1)} at model selection.",
+             f"- Overlapping trades are down-weighted: the {res['examples']} signals count as about "
+             f"{c['effective_n']:.0f} independent ones. Training signals per fold: "
+             f"{', '.join(str(v) for v in c['m0']['fold_train_n'])}.", "",
              "## Comparison on signals the model never saw", "",
-             "| Model | Settings | Log-loss | Kept | Mean R kept | Skipped | Mean R skipped |", "|---|---|---|---|---|---|---|"]
+             "Kept minus skipped is the difference in mean R, with a 95% interval from a bootstrap over days.", "",
+             "| Model | Settings | Log-loss | Kept | Mean R kept | Skipped | Mean R skipped | Kept minus skipped |",
+             "|---|---|---|---|---|---|---|---|"]
 
     def row(name: str, d: dict[str, Any], settings: str) -> str:
         f = lambda v: "-" if v is None else f"{v:+.3f}"                           # noqa: E731
+        ci = d.get("spread_ci")
+        gap = "-" if ci is None else f"{d['spread']:+.3f} ({ci[0]:+.3f} to {ci[1]:+.3f})"
         return (f"| {name} | {settings} | {d['log_loss']:.4f} | {d['kept']} | {f(d['kept_mean_r'])} | {d['dropped']} | "
-                f"{f(d['dropped_mean_r'])} |")
+                f"{f(d['dropped_mean_r'])} | {gap} |")
     lines.append(row("M0 take everything", c["m0"], "-"))
     for k, label in (("m1", "M1 logistic regression"), ("m2", "M2 boosted trees")):
         for d in c["tried"][k]:
@@ -141,6 +176,11 @@ def main(argv: list[str] | None = None) -> int:
     end = (a.end or int(time.time())) // 14_400 * 14_400
     start = end - int(a.years * 365 * DAY)
     hourly = history(list(cfg["learning"]["training_pairs"]), start, end, a.offline)
+    try:
+        check_universe(cfg, hourly)
+    except TooFewPairs as e:
+        print(f"no run: {e}")
+        return 1
     t0 = time.time()
     examples = dataset.build(cfg, hourly, start, end)
     print(f"training set: {len(examples)} signals from {len(hourly)} pairs in {time.time() - t0:.0f}s")
@@ -150,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = dataset.usable_inputs(examples)
     comparison = compare(cfg, examples, inputs)
     res: dict[str, Any] = {
-        "decision": "DEC-0016", "start": start, "end": end, "pairs": sorted(hourly), "examples": len(examples),
+        "decision": "DEC-0018", "start": start, "end": end, "pairs": sorted(hourly), "examples": len(examples),
         "win_rate": float(np.mean([e.y for e in examples])), "mean_r": float(np.mean([e.r for e in examples])),
         "by_sleeve": {n: {"n": sum(e.sleeve == n for e in examples),
                           "mean_r": round(float(np.mean([e.r for e in examples if e.sleeve == n])), 4)}
