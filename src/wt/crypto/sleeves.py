@@ -219,6 +219,7 @@ class Run:
     signalled: list[tuple[str, dict[str, Any]]] = field(default_factory=list)   # (sleeve, signal row) awaiting breadth
     # The entry rule, when it is not the registered one: the backtest's random-entry control sets it.
     entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None
+    off: dict[str, str] = field(default_factory=dict)     # sleeves that may not open a trade, with the reason code
 
     @property
     def day(self) -> str:
@@ -286,6 +287,8 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
             if fire and atr is not None:
                 if not fresh:
                     refused = ["late_bar"]
+                elif n in run.off:
+                    refused = [run.off[n]]      # a retired challenger, or the owner's learning switch: exits only
                 else:
                     if quote is None:
                         quote = quote_of()
@@ -368,9 +371,10 @@ def extras(cfg: dict[str, Any], specs: dict[str, rules.Spec]) -> dict[str, dict[
 
 
 def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: Alerts, started: float,
-            flush: Any, specs: dict[str, rules.Spec] | None = None) -> dict[str, Any]:
+            flush: Any, specs: dict[str, rules.Spec] | None = None, off: dict[str, str] | None = None) -> dict[str, Any]:
     """One cycle of every sleeve. `flush(book, book_path, journal)` is the cycle's own journal writer. `specs` are
-    the sleeves to run (the registered three when not given). Returns a summary for the cycle's log line."""
+    the sleeves to run (the registered three when not given); `off` names those among them that may not open a
+    trade. Returns a summary for the cycle's log line."""
     common = cfg["sleeves"]["common"]
     specs = specs or rules.registered(cfg)
     names = list(specs)
@@ -389,7 +393,7 @@ def run_all(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], aler
         flush(books[n], risk.sleeve_dir(desk, n) / "book.json", desk.journal)        # repair, as the baseline does
     run = Run(now, desk, specs, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(common["limits"])),
               tuple(pairs), books, pair_infos(api, state, list(pairs.values()), utc_day(now), budget),
-              extras(cfg, specs), alerts)
+              extras(cfg, specs), alerts, off=dict(off or {}))
     # How many closed bars of each length the sleeves need. Daily bars also feed the dip rule's filter and the
     # market inputs, whatever the sleeves' own bar lengths are.
     keep: dict[int, int] = {base.daily_min: base.daily_bars}

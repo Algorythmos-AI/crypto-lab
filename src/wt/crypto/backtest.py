@@ -239,16 +239,23 @@ def verdict(base: dict[str, Any], stressed: dict[str, Any], control_p: float | N
 
 
 def control(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, PairInfo], start: int, end: int,
-            base_rows: list[dict[str, Any]], sleeve: str, runs: int, seed: int) -> tuple[float | None, list[float]]:
+            base_rows: list[dict[str, Any]], sleeve: str, runs: int, seed: int,
+            specs: dict[str, rules.Spec] | None = None) -> tuple[float | None, list[float]]:
     """The random-entry control for one sleeve: `runs` histories with the same exits, sizing and costs and entries
-    drawn at the sleeve's own rate. Returns (p-value of the real mean R, the control means)."""
+    drawn at the sleeve's own rate. Returns (p-value of the real mean R, the control means).
+
+    A challenger's filters are part of its entry rule, so the control runs without them: its entries fall on any
+    bar, as often as the challenger's own did."""
+    spec = (specs or rules.registered(cfg))[sleeve]
+    plain = {sleeve: dataclasses.replace(spec, btc_filter=False, volume_filter=False, skip_held=False)}
     real = [float(x["r"]) for x in trades(base_rows, sleeve)]
     rate = fire_rate(base_rows, sleeve)
     if not real or rate <= 0:
         return None, []
     means = []
     for k in range(runs):
-        rows = run(cfg, hourly, infos, start, end, entry=random_entry({sleeve: rate}, seed + k), names=[sleeve])
+        # The entry rule is called with the sleeve's base rule, so that is the name the rate goes under.
+        rows = run(cfg, hourly, infos, start, end, entry=random_entry({spec.base: rate}, seed + k), specs=plain)
         rs = [float(x["r"]) for x in trades(rows, sleeve)]
         if rs:
             means.append(float(np.mean(rs)))

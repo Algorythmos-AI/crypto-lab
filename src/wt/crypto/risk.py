@@ -108,6 +108,12 @@ def latch_file(desk: Desk) -> Path:
     return desk.state_dir / "latch"
 
 
+def learning_file(desk: Desk) -> Path:
+    """The owner's switch for everything that learns (DEC-0016, 6). While it exists no model acts, no challenger
+    is drawn or admitted, and live challengers open nothing. The baseline and the registered sleeves trade on."""
+    return desk.state_dir / "LEARNING_OFF"
+
+
 def update_latch(book: Book, day: str, desk: Desk, limits: Limits) -> bool:
     """Write the latch when today's realised loss has reached the limit. True when this call set it."""
     f = latch_file(desk)

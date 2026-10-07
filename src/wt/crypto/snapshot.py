@@ -273,8 +273,20 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
     week, month = (today - dt.timedelta(days=today.weekday())).isoformat(), today.replace(day=1).isoformat()
     cutoff = (now - dt.timedelta(days=CURVE_DAYS)).isoformat()
     fixed = exit_r(rows)
+    # The registered sleeves, then the challengers the bar cycle runs (DEC-0016, 5): each passed gate C1 before
+    # its first trade. (name, what it trades, stage, bar length, config)
+    shown = [(n, str(sc[n].get("hypothesis")), engine.STAGE, int(sc["common"]["timeframe_min"]), engine.sleeve_hash(cfg, n))
+             for n in rules.NAMES if n in sc]
+    try:
+        from wt.crypto import challengers
+        specs, off = challengers.active(desk, cfg)
+        shown += [(cid, ("Retired challenger: " if off.get(cid) == challengers.RETIRED_CODE else "Challenger: ")
+                   + challengers.describe(rules.canonical(challengers.load_state(desk)[cid]["dials"])),
+                   "passed", s.c.timeframe_min, cid) for cid, s in specs.items()]
+    except Exception as fault:  # noqa: BLE001 — the registered sleeves are shown whatever the challengers' record says
+        print(f"challengers left out of the snapshot ({fault.__class__.__name__})", file=sys.stderr)
     out = []
-    for name in (n for n in rules.NAMES if n in sc):
+    for name, strategy, stage, tf_min, config in shown:
         mine = [r for r in rows if r.get("sleeve") == name]
         folder = risk.sleeve_dir(desk, name)
         book = Book.load(folder / "book.json", Decimal(str(sc["common"]["start_equity"])))
@@ -308,8 +320,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
             got = [v for d, v in pnl if d >= since]
             return sum(got), len(got)
         out.append({
-            "name": name, "strategy": str(sc[name].get("hypothesis")), "stage": engine.STAGE,
-            "tf_min": int(sc["common"]["timeframe_min"]), "config": engine.sleeve_hash(cfg, name),
+            "name": name, "strategy": strategy, "stage": stage, "tf_min": tf_min, "config": config,
             "equity": equity, "start_equity": float(book.start_equity),
             "return_pct": (equity / float(book.start_equity) - 1) * 100 if book.start_equity else None,
             "cash": float(book.cash), "exposure": float(book.exposure()), "open_pnl": sum(opens) if opens else None,

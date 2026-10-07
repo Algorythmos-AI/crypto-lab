@@ -27,7 +27,7 @@ from typing import Any
 from wt.core import ledger
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import features, risk, sleeves
+from wt.crypto import challengers, features, risk, rules, sleeves
 from wt.crypto.book import Book, Position, Rejected, utc_day
 from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
 from wt.crypto.quality import assess
@@ -204,8 +204,21 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
     if cfg.get("sleeves") and not str(next(iter(failed.values()), "")).startswith("clock:"):
         # The tournament sleeves (DEC-0015) run after the baseline is saved and journalled, and nothing they do
         # can change its result: a fault in them is reported and the cycle still ends as the baseline left it.
+        specs: dict[str, rules.Spec] = rules.registered(cfg)
+        off: dict[str, str] = {}
         try:
-            s = sleeves.run_all(now, api, desk, cfg, alerts, started, flush)
+            # Challengers that passed their backtest (DEC-0016, 5) trade beside the registered sleeves. A fault in
+            # their record leaves them out of this cycle; it never stops the registered sleeves.
+            more, off = challengers.active(desk, cfg)
+            specs = {**specs, **more}
+            alerts.resolve("crypto:challengers-failed", "Crypto: the challengers run again", "The fault has cleared.")
+        except Exception as e:  # noqa: BLE001
+            print(f"challengers left out ({e.__class__.__name__}: {e})", file=sys.stderr)
+            alerts.fire("crypto:challengers-failed", "Crypto: the challengers did not run",
+                        f"{e.__class__.__name__} reading the challengers' record. The registered sleeves ran. A "
+                        "challenger's open position is not being watched until this is fixed.", 4)
+        try:
+            s = sleeves.run_all(now, api, desk, cfg, alerts, started, flush, specs=specs, off=off)
             print(f"sleeves: evaluated {s['evaluated']} failed {sorted(s['failed'])} open {s['open']}")
             alerts.resolve("crypto:sleeves-failed", "Crypto: the tournament sleeves run again", "The fault has cleared.")
         except Exception as e:  # noqa: BLE001

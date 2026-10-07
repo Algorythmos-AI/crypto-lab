@@ -10,6 +10,7 @@ credentials and cannot place a real order.
 |---|---|---|
 | `wt-crypto.timer` | every 15 minutes, 10 s after the bar closes | one bar cycle: data, quality, exits, entries, evidence |
 | `wt-dashboard-crypto.timer` | every 15 minutes, 1 min after the bar closes | publish the desk's snapshot |
+| `wt-crypto-challengers.timer` | every day 03:30 New York | the challengers: retire, draw at most two a week, register, backtest, admit |
 | `wt-backup.timer` | every day 19:30 New York | verifies and anchors the crypto journal with the other ledgers |
 
 State lives in `var/crypto/`: `book.json` (the book and the cycle's bookkeeping), `crypto_journal.jsonl`
@@ -31,12 +32,27 @@ lines `[ok]`), then the Crypto tab of the dashboard.
 |---|---|
 | Stop new entries | `make kill DESK=crypto REASON="..."` |
 | Allow entries (the owner's decision; before gate C1 the trades are incubation, DEC-0014) | `make unkill DESK=crypto` |
-| Turn all learning off or on (the model's filter and the challengers; DEC-0016, 6) | `make crypto-learning-off` / `make crypto-learning-on` (arrives with the learning job) |
+| Turn all learning off or on (the model's filter and the challengers; DEC-0016, 6) | `make crypto-learning-off` / `make crypto-learning-on` |
+| See the challengers: who was drawn, the backtest verdicts, who is live | `make crypto-challengers` |
 | Clear the daily-loss latch | `make reset-crypto-latch` |
 | Stop the desk entirely | owner: `sudo systemctl disable --now wt-crypto.timer wt-dashboard-crypto.timer` |
 
-`unkill` and `reset-latch` refuse while a cycle is running and write a `control` line to the journal. Stopping
+`unkill`, `reset-latch` and the learning switch refuse while a cycle is running and write a `control` line to the
+journal. With learning off, no challenger is drawn, backtested or admitted and live challengers open nothing;
+their open positions are still managed to their exits, and the baseline and the three registered sleeves trade on. Stopping
 the timers makes the off-host watchdog page once ("Crypto desk: ... stopped"), which is correct.
+
+## Challengers
+
+`wt-crypto-challengers` runs once a day at 03:30 New York time (DEC-0016, 5). Most runs only check the live
+challengers against the retirement rules and take seconds. The first run of an ISO week draws at most two new
+ones, writes their exact rules to the journal, and only then backtests each on the registered sleeves' own
+two-year span (about 200 runs, several minutes). One that passes gate C1 trades its own US$10,000 paper book
+from the next bar cycle and appears on the tournament board; one that fails never trades. The first run fetches
+the hourly history from the second public exchange into `data/crypto/history` and reuses it after that.
+
+A run that fails is retried by the next day's: the journal is the record, and a challenger registered but not
+yet judged is judged first. The timer is new with this job, so it needs one `sudo wt-install-units`.
 
 ## Pages
 
@@ -45,6 +61,8 @@ the timers makes the off-host watchdog page once ("Crypto desk: ... stopped"), w
 | Crypto desk: dashboard late / stopped | no snapshot for 35 / 90 minutes | `make status`; `journalctl -u wt-dashboard-crypto -n 50` |
 | `wt-crypto` (healthchecks) | no bar cycle finished for 45 minutes | `journalctl -u wt-crypto -n 50`; is the host up? |
 | Crypto: no market data | three cycles in a row read nothing from Kraken | check status.kraken.com; nothing to do while it is down. An open position is not being watched: note the day as an incident |
+| Crypto: the challengers did not run | the bar cycle could not read the challengers' record | the registered sleeves ran; `make crypto-challengers`, and `journalctl -u wt-crypto -n 50` for the fault. A challenger's open position is not watched meanwhile |
+| Crypto: challenger ... joins the tournament / retired | information: the daily run admitted or retired one | nothing to do; `make crypto-learning-off` stops all of it |
 | Crypto: daily loss limit reached | realised loss hit the latch | review the day's exits on the Strategy page; `make reset-crypto-latch` when satisfied |
 | Crypto: an open position has an unobserved gap | more than 12 hours without 1-minute data while a position was open | the day is an incident for gate C2; the position is still managed |
 | Evidence chain broken: crypto entries off | the nightly check found a break in `crypto_journal.jsonl` | do not edit the file; compare with the last anchor and the restic snapshot ([backups](backups-and-lease.md)) |
