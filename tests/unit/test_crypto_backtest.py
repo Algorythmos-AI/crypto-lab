@@ -1,6 +1,7 @@
 """Gate C1 (DEC-0015): the backtest drives the desk's own code, so the same bars give the same trades."""
 from __future__ import annotations
 
+import dataclasses
 import json
 from decimal import Decimal
 
@@ -206,3 +207,40 @@ def test_the_backtest_records_every_signal_so_history_can_be_labelled():
     decided = [r for r in rows if r["kind"] in ("entry", "refused")]
     assert len(sigs) == len(decided) > 0 and {r["sid"] for r in sigs} == {f"{r['sleeve']}|{r['pair']}|{r['bar']}" for r in decided}
     assert all(r["inputs"]["btc_above_sma50"] in (0.0, 1.0) for r in sigs)       # the market inputs are there in history too
+
+
+def test_a_signal_has_the_same_inputs_in_the_training_set_as_on_the_desk():
+    """DEC-0018: a model is trained on `wt.ml.dataset.build` and scores what the desk records. From the same bars
+    the two must give the same signals with the same inputs, or the model is scoring something it never saw."""
+    from wt.crypto import signals
+    from wt.ml import dataset
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0),
+             (110.5, 118.0, 110.0, 117.0, 6.0), (117.0, 117.5, 108.0, 109.0, 2.0), (109.0, 110.0, 108.5, 109.5, 1.0)]
+    pairs = {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD"}
+    cfg = {**CFG, "sleeves": {**CFG["sleeves"], "common": {**CFG["sleeves"]["common"], "pairs": pairs}}}
+    bars = breakout_history(after)
+    history = {"BTC/USD": bars, "ETH/USD": [Bar(b.t, b.o / 10, b.h / 10, b.l / 10, b.c / 10, b.vwap / 10, b.v, b.n) for b in bars]}
+    end = B0 + H4 * (len(after) + 1) + 1
+    # A tick far below the price, as on the venue: the fixtures' 0.1 tick on a price of 100 would move a bought
+    # signal's stop by a visible share of its distance, which no traded pair's real tick does.
+    fine = {k: dataclasses.replace(INFO[k], tick=Decimal("0.000001")) for k in pairs.values()}
+    desk = {r["sid"]: r for r in backtest.run(cfg, history, fine, B0, end) if r["kind"] == "signal"}
+    assert len(desk) >= 4 and {r["inputs"]["breadth"] for r in desk.values()} == {2.0}
+    # History is followed past the end of the desk's run so that every one of its signals has an outcome.
+    flat = [(109.5, 109.6, 80.0, 81.0, 1.0)] + [(81.0, 81.5, 80.5, 81.0, 1.0)] * 200
+    longer = breakout_history([*after, *flat])
+    shift = bars[0].t - longer[0].t
+    longer = [Bar(b.t + shift, b.o, b.h, b.l, b.c, b.vwap, b.v, b.n) for b in longer]
+    assert [(b.t, b.c) for b in longer[:len(bars)]] == [(b.t, b.c) for b in bars]
+    trained = {e.sid: e for e in dataset.build(
+        cfg, {"BTC/USD": longer, "ETH/USD": [Bar(b.t, b.o / 10, b.h / 10, b.l / 10, b.c / 10, b.vwap / 10, b.v, b.n)
+                                             for b in longer]}, B0, end)}
+    assert set(desk) <= set(trained), sorted(set(desk) - set(trained))
+    assert {s for s, e in trained.items() if e.t < end} == set(desk)
+    unknown = {"spread_pct", "held_elsewhere"}                           # candle history cannot supply these
+    for sid, row_ in desk.items():
+        for name in signals.INPUTS:
+            if name in unknown:
+                continue
+            a, b = row_["inputs"][name], trained[sid].inputs[name]
+            assert (a is None and b is None) or a == pytest.approx(b, rel=1e-4, abs=1e-4), (sid, name, a, b)
