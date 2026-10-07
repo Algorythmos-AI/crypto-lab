@@ -130,6 +130,9 @@ def venue(signal: dict[str, list] | None = None) -> Venue:
 
 @pytest.fixture
 def crypto(tmp_path, monkeypatch):
+    # Each book stands alone here: these tests are about one sleeve's mechanics, and two of the synthetic series
+    # fire two sleeves on one coin. The desk-wide limits (DEC-0019) have their own tests, which put them back.
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": None)
     d = dataclasses.replace(desks.DESKS["crypto"], state_dir=tmp_path / "crypto", kill_file=tmp_path / "crypto/KILL",
                             ledgers=(("crypto", tmp_path / "crypto/crypto_journal.jsonl"),),
                             chain_flag=tmp_path / "crypto/chain-broken")

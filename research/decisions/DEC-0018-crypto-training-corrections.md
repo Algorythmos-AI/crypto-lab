@@ -1,6 +1,6 @@
 # DEC-0018: Crypto desk, corrections to the training method (amends DEC-0016 and DEC-0017)
 
-- **Status: PROPOSED.** The owner accepts it by merging the pull request that carries it.
+- **Status: ACCEPTED on 2026-10-07.** The owner accepted it by merging the pull request that carried it (PR 89).
 - **Amends:** DEC-0016, section 3, and DEC-0017. Every other part of both stands.
 - **Date drafted:** 2026-10-07, after EXP-0017 and EXP-0018 and before the rerun (EXP-0019). The method
   below was committed before EXP-0019 was run.

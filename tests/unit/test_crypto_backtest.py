@@ -14,6 +14,7 @@ from wt.crypto.data import Bar, CoinbasePublic, DataError, aggregate, fill_grid
 from test_crypto_sleeves import B0, CFG, DAY, H4, INFO, Venue, crypto, row  # noqa: F401
 
 HOUR = 3600
+DESK_LIMITS = risk.load_desk_limits()                    # the real ones: the `crypto` fixture switches them off
 
 
 def hourly_series(end: int, closes_4h: list[tuple[float, float, float, float, float]]) -> list[Bar]:
@@ -73,16 +74,20 @@ def _economics(rows: list[dict], sleeve: str) -> list[tuple]:
             for r in rows if r.get("sleeve") == sleeve and r["kind"] in ("entry", "exit")]
 
 
-def test_the_backtest_and_the_live_cycle_make_the_same_trades_from_the_same_bars(crypto):  # noqa: F811
+def test_the_backtest_and_the_live_cycle_make_the_same_trades_from_the_same_bars(crypto, monkeypatch):  # noqa: F811
     d, _, _ = crypto
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": DESK_LIMITS)
     after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0)]
     history = {"BTC/USD": breakout_history(after)}
     end = B0 + H4 * (len(after) + 1) + 1                                 # `end` is exclusive: include the last close
     infos = {"XBTUSD": INFO["XBTUSD"]}
     cfg = {**CFG, "sleeves": {**CFG["sleeves"], "common": {**CFG["sleeves"]["common"], "pairs": {"BTC/USD": "XBTUSD"}}}}
-    tested = backtest.run(cfg, history, infos, B0, end)
-    kinds = [r["kind"] for r in tested if r.get("sleeve") == "break" and r["kind"] in ("entry", "exit")]
-    assert kinds[:2] == ["entry", "exit"]                                # bought the breakout, sold at its target
+    # The desk runs under its desk-wide limits (DEC-0019), so the backtest is given the same ones. TREND and BREAK
+    # both fire on the breakout bar; TREND is first and takes the coin.
+    tested = backtest.run(cfg, history, infos, B0, end, desk_lim=DESK_LIMITS)
+    kinds = [r["kind"] for r in tested if r.get("sleeve") == "trend" and r["kind"] in ("entry", "exit")]
+    assert kinds[:1] == ["entry"]
+    assert [r["why"] for r in tested if r.get("sleeve") == "break" and r["kind"] == "refused"][0] == ["desk_coin"]
 
     m = backtest.Market.of(history["BTC/USD"], H4, DAY)                  # the same bars, served as a venue would
     v = Venue()
@@ -104,8 +109,10 @@ def test_the_backtest_and_the_live_cycle_make_the_same_trades_from_the_same_bars
         import wt.crypto.cycle as cycle_mod
         cycle_mod.run(now=v.now, api=v.api(), desk=d, cfg=cfg, limits=risk.load_limits("C"), alerts=crypto[1])
     live = [json.loads(x) for x in d.journal.read_text().splitlines()]
-    assert _economics(live, "break") == _economics(tested, "break") and len(_economics(live, "break")) >= 2
-    assert _economics(live, "trend") == _economics(tested, "trend")
+    assert _economics(live, "trend") == _economics(tested, "trend") and len(_economics(live, "trend")) >= 1
+    assert _economics(live, "break") == _economics(tested, "break") == []
+    refusals = lambda rows: [(r["sleeve"], r["pair"], r["bar"], r["why"]) for r in rows if r["kind"] == "refused"]  # noqa: E731
+    assert refusals(live) == refusals(tested)
 
 
 def test_costs_at_one_and_a_half_times_slippage_cost_more():
@@ -244,3 +251,68 @@ def test_a_signal_has_the_same_inputs_in_the_training_set_as_on_the_desk():
                 continue
             a, b = row_["inputs"][name], trained[sid].inputs[name]
             assert (a is None and b is None) or a == pytest.approx(b, rel=1e-4, abs=1e-4), (sid, name, a, b)
+
+
+def test_without_desk_limits_each_book_stands_alone_as_in_exp_0016():
+    cfg = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0)]
+    rows = backtest.run(cfg, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + 4 * H4 + 1)
+    entered = {r["sleeve"] for r in rows if r["kind"] == "entry"}
+    assert {"trend", "break"} <= entered                                 # one coin, bought twice on one bar
+
+
+def test_under_desk_limits_no_coin_is_held_twice_and_a_refused_signal_is_still_followed():
+    from wt.crypto import signals
+    pairs = {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD"}
+    cfg = {**CFG, "sleeves": {**CFG["sleeves"], "common": {**CFG["sleeves"]["common"], "pairs": pairs}}}
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0),
+             (110.5, 118.0, 110.0, 117.0, 6.0), (117.0, 117.5, 108.0, 109.0, 2.0), (109.0, 110.0, 108.5, 109.5, 1.0)]
+    bars = breakout_history(after)
+    history = {p: [Bar(b.t, b.o / k, b.h / k, b.l / k, b.c / k, b.vwap / k, b.v, b.n) for b in bars]
+               for p, k in zip(pairs, (1, 10, 4), strict=True)}
+    infos = {k: dataclasses.replace(INFO.get(k, INFO["XBTUSD"]), tick=Decimal("0.000001")) for k in pairs.values()}
+    end = B0 + H4 * (len(after) + 1) + 1
+    lim = DESK_LIMITS
+    assert lim is not None and lim.one_position_per_coin and lim.max_open_risk_pct == Decimal("3.0")
+    alone = backtest.run(cfg, history, infos, B0, end)
+    held = backtest.run(cfg, history, infos, B0, end, desk_lim=lim)
+    # Replay the journal: who holds what after every row.
+    open_: dict[str, set[str]] = {}
+    for r in held:
+        if r["kind"] == "entry":
+            assert not any(r["pair"] in v for n, v in open_.items() if n != r["sleeve"]), r
+            open_.setdefault(r["sleeve"], set()).add(r["pair"])
+        elif r["kind"] == "exit":
+            open_[r["sleeve"]].discard(r["pair"])
+    why = [c for r in held if r["kind"] == "refused" for c in r["why"]]
+    assert "desk_coin" in why                                            # (the risk rule has its own test below)
+    assert len([r for r in held if r["kind"] == "entry"]) < len([r for r in alone if r["kind"] == "entry"])
+    # The limits change who may enter, never how big: an entry made under them is sized as the sleeve sizes it.
+    size = {(r["sleeve"], r["pair"], r["bar"]): (r["qty"], r["price"], r["stop"]) for r in alone if r["kind"] == "entry"}
+    first = next(r for r in held if r["kind"] == "entry")
+    assert size[(first["sleeve"], first["pair"], first["bar"])] == (first["qty"], first["price"], first["stop"])
+    # A signal the desk refused is recorded like any other, with its inputs, so it can be followed to an outcome.
+    sig = next(r for r in held if r["kind"] == "signal" and not r["taken"] and "desk_coin" in r["why"])
+    assert sig["inputs"]["held_elsewhere"] == 1.0 and sig["stop"] < sig["price"]
+    assert signals.INPUTS == tuple(sig["inputs"])
+
+
+def test_open_risk_counts_every_book_and_a_stop_above_its_entry_risks_nothing():
+    from wt.crypto.book import Book, Position
+    def pos(pair, qty, entry, stop):                                     # noqa: E306
+        p = Position.__new__(Position)
+        p.pair, p.qty, p.entry_price, p.stop = pair, Decimal(qty), Decimal(entry), Decimal(stop)
+        return p
+    a, b = Book(Decimal(10000), Decimal(10000)), Book(Decimal(10000), Decimal(10000))
+    a.positions["BTC/USD"] = pos("BTC/USD", "1", "100", "90")           # risks 10
+    b.positions["ETH/USD"] = pos("ETH/USD", "2", "50", "60")            # stop trailed above the entry: risks nothing
+    books = {"trend": a, "break": b}
+    assert risk.open_risk(books) == Decimal(10)
+    lim = risk.DeskLimits(True, Decimal("3.0"))
+    eq = Decimal(20000)                                                  # 3% is 600
+    assert risk.desk_blockers("SOL/USD", "dip", Decimal(590), books, eq, lim) == []
+    assert risk.desk_blockers("SOL/USD", "dip", Decimal(591), books, eq, lim) == ["desk_risk"]
+    assert risk.desk_blockers("BTC/USD", "break", Decimal(1), books, eq, lim) == ["desk_coin"]
+    assert risk.desk_blockers("BTC/USD", "trend", Decimal(1), books, eq, lim) == []      # its own book's rule, not this one
+    assert risk.desk_blockers("BTC/USD", "break", Decimal(10**6), books, eq, None) == []
+    assert risk.desk_blockers("BTC/USD", "break", Decimal(1), books, eq, risk.DeskLimits(False, Decimal("3.0"))) == []

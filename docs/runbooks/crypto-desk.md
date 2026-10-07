@@ -55,6 +55,13 @@ the hourly history from the second public exchange into `data/crypto/history` an
 A run that fails is retried by the next day's: the journal is the record, and a challenger registered but not
 yet judged is judged first. The timer is new with this job, so it needs one `sudo wt-install-units`.
 
+## Limits across the desk
+
+`config/risk.yaml`, key `CD` (DEC-0019), applies to the registered sleeves and the live challengers together; the
+baseline is outside it. A sleeve's signal is refused with `desk_coin` when another book holds the coin, and with
+`desk_risk` when open risk at the stops plus the new trade's would pass the cap. Both only refuse entries, and a
+refused signal is still recorded and followed. Changing either number needs a decision record.
+
 ## The model
 
 `wt-crypto-learn` runs once a day at 04:30 New York time (DEC-0016, 2 to 4):

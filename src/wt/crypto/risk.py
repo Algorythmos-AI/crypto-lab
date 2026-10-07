@@ -50,6 +50,41 @@ def load_sleeve_limits(key: str = "CT") -> SleeveLimits:
                         int(c["max_orders_per_day"]), Decimal(str(c["daily_loss_latch_pct"])))
 
 
+@dataclass(frozen=True)
+class DeskLimits:
+    """Limits across every book of the tournament together (config/risk.yaml, key CD; DEC-0019)."""
+    one_position_per_coin: bool
+    max_open_risk_pct: Decimal
+
+
+def load_desk_limits(key: str = "CD") -> DeskLimits | None:
+    """The desk-wide limits, or None when the config has none (a checkout from before DEC-0019)."""
+    c = load_yaml("risk.yaml").get(key)
+    if not c:
+        return None
+    return DeskLimits(bool(c["one_position_per_coin"]), Decimal(str(c["max_open_risk_pct"])))
+
+
+def open_risk(books: dict[str, Book]) -> Decimal:
+    """The loss at every open position's stop as it stands, across the books. A stop trailed above its entry
+    risks nothing; it does not offset another position's risk."""
+    return sum((max(Decimal(0), p.risk) for b in books.values() for p in b.positions.values()), Decimal(0))
+
+
+def desk_blockers(pair: str, sleeve: str, new_risk: Decimal, books: dict[str, Book], equity: Decimal,
+                  lim: DeskLimits | None) -> list[str]:
+    """Codes of what the desk as a whole forbids for this entry; empty = allowed. `books` are the tournament's
+    books by sleeve, `equity` their combined equity, `new_risk` the loss at the new trade's stop."""
+    if lim is None:
+        return []
+    why = []
+    if lim.one_position_per_coin and any(pair in b.positions for n, b in books.items() if n != sleeve):
+        why.append("desk_coin")
+    if open_risk(books) + max(Decimal(0), new_risk) > equity * lim.max_open_risk_pct / 100:
+        why.append("desk_risk")
+    return why
+
+
 def sleeve_dir(desk: Desk, sleeve: str) -> Path:
     return desk.state_dir / "sleeves" / sleeve
 

@@ -88,10 +88,12 @@ class Market:
 def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, PairInfo], start: int, end: int,
         slip_mult: float = 1.0, lim: risk.SleeveLimits | None = None,
         entry: Callable[..., tuple[bool, tuple[str, ...], float | None]] | None = None,
-        names: list[str] | None = None, specs: dict[str, rules.Spec] | None = None) -> list[dict[str, Any]]:
+        names: list[str] | None = None, specs: dict[str, rules.Spec] | None = None,
+        desk_lim: risk.DeskLimits | None = None) -> list[dict[str, Any]]:
     """Every 4-hour close in [start, end) as one cycle of the sleeves. `hourly` is keyed by our pair name.
     `specs` are the sleeves to run (the registered three when not given; `names` picks among them). `entry`
-    replaces the entry rule (the random-entry control); everything after the entry is unchanged."""
+    replaces the entry rule (the random-entry control); everything after the entry is unchanged. `desk_lim` are
+    the limits across the books together (DEC-0019); without them each book stands alone, as in EXP-0016."""
     common = cfg["sleeves"]["common"]
     base = rules.Common.of(common)
     specs = specs or rules.registered(cfg)
@@ -122,7 +124,7 @@ def run(cfg: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, Pair
         for close in closes:
             now = float(close + 10)
             cycle = sleeves.Run(now, desk, specs, costs, cfg["quality"], lim, tuple(pairs), books, infos, extra,
-                                _Quiet(), step_s=HOUR)       # type: ignore[arg-type]
+                                _Quiet(), step_s=HOUR, desk_lim=desk_lim)       # type: ignore[arg-type]
             if entry is not None:
                 cycle.entry = entry
             if (btc := markets.get("BTC/USD")) is not None:

@@ -569,10 +569,10 @@ def test_the_crypto_package_imports_no_broker_and_only_the_public_base_url():
 
 def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
     """DEC-0012: the AUD pairs fail the data gate, so the frozen config is the USD pairs. Family C began at 4
-    trials and DEC-0015 registered three more."""
+    trials, DEC-0015 registered three more, and DEC-0019 (the tournament under desk-wide limits) one."""
     from wt.research.trials import family_trial_count
     assert FILE_CFG["pairs"] == {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD"}
-    assert FILE_CFG["quote_currency"] == "USD" and family_trial_count("C") == 7
+    assert FILE_CFG["quote_currency"] == "USD" and family_trial_count("C") == 8
     record = (ROOT / "research/decisions/DEC-0012-crypto-desk-preregistration.md").read_text()
     assert "Status: ACCEPTED" in record and "starts at **4**" in record and "BTC/USD, ETH/USD and SOL/USD" in record
     with pytest.raises(ValueError):
