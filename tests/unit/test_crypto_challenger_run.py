@@ -158,7 +158,7 @@ def test_a_challenger_is_in_the_journal_before_its_backtest_and_one_that_fails_n
     assert len(seen) == 2
     # When the first backtest starts, both of this week's challengers are registered and nothing is judged.
     assert seen[0][2] == ["registered", "registered"] and seen[1][2] == ["registered", "registered", "c1"]
-    assert [n for _, n, _ in seen] == [12, 13]              # family C's eleven (DEC-0020), plus those registered so far
+    assert [n for _, n, _ in seen] == [13, 14]              # family C's twelve (DEC-0025), plus those registered so far
     rows = [r for r in journal(d) if r["kind"] == "challenger"]
     assert [r["event"] for r in rows] == ["registered", "registered", "c1", "c1"]
     assert all(r["sleeve"].startswith("ch-") and r["week"] == WEEK and r["rules"] for r in rows[:2])

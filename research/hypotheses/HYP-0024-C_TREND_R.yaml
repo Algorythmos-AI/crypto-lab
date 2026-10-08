@@ -1,0 +1,8 @@
+id: HYP-0024
+trial: "C-TREND-R"
+family: C                       # crypto desk; counted apart from the equity trials (DEC-0012, DEC-0015)
+status: pre-registered          # DEC-0025 accepted by merge; nothing is built or run before that
+statement: "When the TREND rule (HYP-0021) fires on more pairs than its book can take, entering them in order of each pair's 30-bar return, strongest first, instead of in the order the pairs are listed, gives the rule positive fixed-rule expectancy after exchange fees and slippage."
+config: config/crypto.yaml      # sleeves.trend unchanged; the ordering is the only difference and is fixed in DEC-0025
+evidence: {decision: DEC-0025, adr: docs/adr/0005-desks.md}
+falsified_if: "Any C1 gate of DEC-0015 fails on EXP-0016's span: CI95 lower bound of mean R <= 0 after fees at 1.5x slippage, deflated Sharpe <= 0.95 at the family-C trial count, random-entry control p >= 0.05, profit factor < 1.2, or fewer than 30 trades. If it passes, it must also be confirmed on the two years before (DEC-0021)."
