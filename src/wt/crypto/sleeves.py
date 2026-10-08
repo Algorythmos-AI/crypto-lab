@@ -248,6 +248,9 @@ class Run:
     acting: bool = False
     lineage: str = ""
     pending: list[Pending] = field(default_factory=list)
+    # Entries of a sleeve that orders one bar's signals (rules.Spec.order; DEC-0025): made once every pair has
+    # been looked at, in that order.
+    ranked: list[Pending] = field(default_factory=list)
     model_fault: str | None = None
     desk_lim: risk.DeskLimits | None = None               # limits across all the books together (DEC-0019)
 
@@ -329,6 +332,10 @@ def step_pair(run: Run, name: str, kraken_pair: str, bars_of: Callable[[int], li
                         run.pending.append(Pending(n, name, kraken_pair, last, bars, atr, quote, list(q.reasons), row,
                                                    book.equity(run.marks)))
                         waits = True
+                    elif spec.order:
+                        run.ranked.append(Pending(n, name, kraken_pair, last, bars, atr, quote, list(q.reasons), row,
+                                                  book.equity(run.marks)))
+                        waits = True
                     else:
                         refused = enter(book, n, name, last, atr, quote, run.infos.get(kraken_pair), list(q.reasons),
                                         now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
@@ -381,7 +388,7 @@ def _held(run: Run, n: str, name: str) -> bool:
     """Whether another sleeve holds the pair. An entry that waits for the model counts as held: to every other
     sleeve the cycle must look as it would with no model, where that entry was already made."""
     return (any(name in run.books[m].positions for m in run.names if m != n)
-            or any(p.pair == name and p.sleeve != n for p in run.pending))
+            or any(p.pair == name and p.sleeve != n for p in (*run.pending, *run.ranked)))
 
 
 def _breadth(run: Run, n: str, bar: int) -> float:
@@ -391,6 +398,37 @@ def _breadth(run: Run, n: str, bar: int) -> float:
 
 def _scored(rec: dict[str, Any], got: Any, k: int, lineage: str) -> None:
     rec.update(score=got.scores[k], model=got.version, lineage=lineage, cutoff=got.cutoff, half_below=got.half_below)
+
+
+def settle_ranked(run: Run) -> None:
+    """The entries of sleeves that order one bar's signals (DEC-0025), once every pair has been looked at. Each
+    sleeve's waiting signals are tried strongest first by the measure its spec names; a signal the measure has
+    no value for comes after those that have one; equal ones stay in the order the pairs are listed. Each is then
+    entered or refused by the book's own limits exactly as an unordered sleeve's would be: the order is the only
+    difference. Sized from the book's value at the moment it is entered, as an unordered entry is; so two
+    sleeves that differ only in order can differ in a size by the fee of an entry made before it."""
+    waiting, run.ranked = list(run.ranked), []
+    for n in run.names:
+        mine = [p for p in waiting if p.sleeve == n]
+        if not mine:
+            continue
+        spec = run.specs[n]
+        if spec.order != "ret_30":
+            raise ValueError(f"unknown order {spec.order!r}")
+        score = [signals.ret_30(p.bars) for p in mine]
+        # Python's sort is stable, so within one key the listed order is kept.
+        for k in sorted(range(len(mine)), key=lambda i: (score[i] is None, -(score[i] or 0.0))):
+            p = mine[k]
+            try:
+                refused = enter(run.books[n], n, p.pair, p.last, p.atr, p.quote, run.infos.get(p.kraken_pair), p.reasons,
+                                run.now, run.day, run.desk, risk.sleeve_dir(run.desk, n), run.pairs,
+                                run.books[n].equity(run.marks), spec.c, spec.p, run.costs, run.lim, run.extra[n],
+                                desk_why=_desk_why(run, n, p.pair))
+                _conclude(run, n, p.pair, p.last, p.bars, p.atr, p.quote, refused, p.row)
+            except Exception as e:  # noqa: BLE001 — as in `settle`: named, and the bar is looked at again next cycle
+                run.failed[f"{n}:{p.pair}"] = e.__class__.__name__
+                run.books[n].meta["last_bar"].pop(p.pair, None)
+                run.seen.get(n, {}).pop(p.pair, None)
 
 
 def settle(run: Run) -> None:
@@ -461,6 +499,7 @@ def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: f
 def finish(run: Run, flush: Callable[[Book, Path, Path], Any], save: bool = True) -> None:
     """End of a cycle for every sleeve: the signals' rows, the loss latch, the cycle's own row, the book saved,
     the outbox written."""
+    settle_ranked(run)
     settle(run)
     for n, rec in run.signalled:
         # How many pairs signalled for this sleeve on the same bar: known only now that all have been looked at.

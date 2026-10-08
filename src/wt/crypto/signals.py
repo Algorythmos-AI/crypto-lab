@@ -46,6 +46,12 @@ def market(btc_daily: Sequence[Bar]) -> dict[str, float | None]:
             "btc_ret_1d": _pct(closes[-1], closes[-2]) if len(closes) >= 2 else None}
 
 
+def ret_30(bars: Sequence[Bar]) -> float | None:
+    """The pair's return over the 30 bars up to the newest one, in percent. An input of every signal, and the
+    measure ranked entries are ordered by (DEC-0025): one definition for both."""
+    return _pct(bars[-1].c, bars[-31].c) if len(bars) >= 31 else None
+
+
 def inputs(bars: Sequence[Bar], price: float, stop: float, atr: float, spread_pct: float | None,
            context: dict[str, float | None], held_elsewhere: bool, tf_min: int) -> dict[str, float | None]:
     """The inputs of a signal on the newest bar of `bars`. One definition for the recorder, the backtest and
@@ -61,7 +67,7 @@ def inputs(bars: Sequence[Bar], price: float, stop: float, atr: float, spread_pc
         "dist_ema50_pct": _pct(last.c, indicators.ema(closes, 50)),
         "volume_ratio": round(last.v / (sum(vols) / len(vols)), 4) if len(vols) == 20 and sum(vols) > 0 else None,
         "rsi": (lambda r: None if r is None else round(r, 2))(indicators.rsi(closes, 14)),
-        "ret_30": _pct(last.c, closes[-31]) if len(closes) >= 31 else None,
+        "ret_30": ret_30(bars),
         "btc_above_sma50": context.get("btc_above_sma50"), "btc_ret_1d": context.get("btc_ret_1d"),
         "breadth": None, "held_elsewhere": float(held_elsewhere),
         "spread_pct": None if spread_pct is None else round(spread_pct, 4),

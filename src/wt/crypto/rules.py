@@ -53,6 +53,7 @@ class Spec:
     btc_filter: bool = False    # only while Bitcoin's last daily close is above its 50-day average
     volume_filter: bool = False  # only when the signal bar's volume is above its 20-bar mean
     skip_held: bool = False     # not when another sleeve already holds the pair
+    order: str = ""             # which signals of one bar are tried first: "" as listed, "ret_30" strongest first
 
 
 def registered(cfg: dict[str, Any]) -> dict[str, Spec]:
@@ -60,6 +61,17 @@ def registered(cfg: dict[str, Any]) -> dict[str, Spec]:
     sc = cfg["sleeves"]
     c = Common.of(sc["common"])
     return {n: Spec(n, n, c, dict(sc[n]), str(sc[n].get("hypothesis", ""))) for n in NAMES if n in sc}
+
+
+ORDERS = ("", "ret_30")
+TREND_R = "trend_r"
+
+
+def trend_ranked(cfg: dict[str, Any]) -> Spec:
+    """HYP-0024 (DEC-0025): the TREND rule with nothing changed but the order in which one bar's signals are
+    tried, strongest 30-bar return first. Not one of the registered sleeves and not a challenger."""
+    sc = cfg["sleeves"]
+    return Spec(TREND_R, "trend", Common.of(sc["common"]), dict(sc["trend"]), "HYP-0024", order="ret_30")
 
 
 DIALS = ("base", "timeframe_min", "high_bars", "stop_atr", "target_atr", "trail_atr", "min_stop_pct", "btc_filter",

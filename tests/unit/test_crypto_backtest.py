@@ -364,3 +364,77 @@ def test_the_reading_lines_change_no_figure_and_no_verdict():
     hard = {"ci_low": 0.1}
     extra = {"cost_mean_r": 9.0, "gross_mean_r": -9.0, "benchmark": {"return_pct": 500.0}}
     assert backtest.verdict({**base, **extra}, {**hard, **extra}, 0.01) == backtest.verdict(base, hard, 0.01)
+
+
+# ---------------------------------------------------------------- ranked entries (DEC-0025, HYP-0024)
+def _four_breakouts() -> tuple[dict, dict, dict, int]:
+    """Four pairs that all break out on the same bar, the first listed the weakest: closes 103, 104, 105, 106."""
+    pairs = {"BTC/USD": "XBTUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD", "XRP/USD": "XRPUSD"}
+    cfg = {**CFG, "sleeves": {**CFG["sleeves"], "common": {**CFG["sleeves"]["common"], "pairs": pairs}}}
+    after = [(104.0, 104.5, 103.6, 104.2, 1.0)] * 3
+    quiet = [(100.0, 100.5, 99.5, 100.0, 1.0)] * 400
+    history = {}
+    for k, name in enumerate(pairs):
+        top = 103.0 + k
+        history[name] = hourly_series(B0 + H4 * len(after), [*quiet, (100.0, top + 0.2, 99.9, top, 5.0),
+                                                              *[(top, top + 0.5, top - 0.4, top + 0.2, 1.0)] * 3])
+    infos = {v: dataclasses.replace(INFO["XBTUSD"], tick=Decimal("0.000001")) for v in pairs.values()}
+    return cfg, history, infos, B0 + H4 * (len(after) + 1) + 1
+
+
+def test_a_ranked_sleeve_fills_its_book_with_the_strongest_signals_and_an_unranked_one_with_the_first_listed():
+    from wt.crypto import rules, signals
+    cfg, history, infos, end = _four_breakouts()
+    ranked = rules.trend_ranked(cfg)
+    assert ranked.order == "ret_30" and ranked.base == "trend" and ranked.p == rules.registered(cfg)["trend"].p
+    assert rules.registered(cfg)["trend"].order == "" and rules.TREND_R not in rules.registered(cfg)
+    plain = backtest.run(cfg, history, infos, B0, end, names=["trend"])
+    rows = backtest.run(cfg, history, infos, B0, end, specs={rules.TREND_R: ranked})
+    first = lambda rs, kind: [r["pair"] for r in rs if r["kind"] == kind and r["bar"] == B0]      # noqa: E731
+    assert first(plain, "entry") == ["BTC/USD", "ETH/USD", "SOL/USD"] and first(plain, "refused") == ["XRP/USD"]
+    assert first(rows, "entry") == ["XRP/USD", "SOL/USD", "ETH/USD"]                    # strongest first
+    left = [r for r in rows if r["kind"] == "refused" and r["bar"] == B0]
+    assert [r["pair"] for r in left] == ["BTC/USD"] and "positions" in left[0]["why"]      # the book's own limits
+    assert not {"desk_coin", "desk_risk", "model_skip"} & set(left[0]["why"])
+    # Every signal is still recorded, bought or not, with the measure it was ordered by among its inputs.
+    sigs = {r["pair"]: r for r in rows if r["kind"] == "signal" and r["bar"] == B0}
+    assert set(sigs) == set(history) and sigs["BTC/USD"]["taken"] is False and sigs["XRP/USD"]["taken"] is True
+    got = [sigs[p]["inputs"]["ret_30"] for p in history]
+    assert got == sorted(got) and len(set(got)) == 4
+    bars = backtest.Market.of(history["XRP/USD"], H4, DAY).closed(240, B0 + H4, 120)
+    assert sigs["XRP/USD"]["inputs"]["ret_30"] == signals.ret_30(bars)                  # one definition for both
+    # The order is the only difference: an entry both sleeves made has the same price and stop, and a size that
+    # differs only by what the entries made before it cost the book in fees.
+    made = lambda rs: {r["pair"]: r for r in rs if r["kind"] == "entry" and r["bar"] == B0}      # noqa: E731
+    for pair in ("ETH/USD", "SOL/USD"):
+        a, b = made(plain)[pair], made(rows)[pair]
+        assert (a["price"], a["stop"]) == (b["price"], b["stop"])
+        assert float(b["qty"]) == pytest.approx(float(a["qty"]), rel=0.01)
+
+
+def test_the_registered_sleeves_trade_exactly_as_before_with_a_ranked_sleeve_beside_them():
+    from wt.crypto import rules
+    cfg, history, infos, end = _four_breakouts()
+    alone = backtest.run(cfg, history, infos, B0, end)
+    beside = backtest.run(cfg, history, infos, B0, end, specs={**rules.registered(cfg), rules.TREND_R: rules.trend_ranked(cfg)})
+    strip = lambda rs: [{k: v for k, v in r.items() if k not in ("id", "inputs")} | {"inputs": {k: v for k, v in (r.get("inputs") or {}).items() if k != "held_elsewhere"}}  # noqa: E731
+                        for r in rs if r.get("sleeve") in rules.NAMES]
+    assert strip(beside) == strip(alone) and len(strip(alone)) > 10
+    # With one signal on a bar there is nothing to order: the ranked sleeve is TREND, trade for trade.
+    one = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 100.0, 100.5, 1.0)]
+    args = (one, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + H4 * 4 + 1)
+    a = _economics(backtest.run(*args, names=["trend"]), "trend")
+    b = _economics(backtest.run(*args, specs={rules.TREND_R: rules.trend_ranked(one)}), rules.TREND_R)
+    assert a == b and len(a) >= 1
+
+
+def test_a_signal_the_measure_has_no_value_for_comes_last_and_an_unknown_order_is_refused():
+    from wt.crypto import rules, signals, sleeves
+    short = [Bar(B0 + i * H4, 1, 1, 1, 1, 1, 1.0, 1) for i in range(30)]
+    assert signals.ret_30(short) is None and signals.ret_30([*short, Bar(B0 + 30 * H4, 1, 1, 1, 1.5, 1.5, 1.0, 1)]) == 50.0
+    cfg, history, infos, end = _four_breakouts()
+    odd = dataclasses.replace(rules.trend_ranked(cfg), order="alphabetical")
+    with pytest.raises(ValueError, match="unknown order"):
+        backtest.run(cfg, history, infos, B0, end, specs={rules.TREND_R: odd})
+    assert sleeves.settle_ranked.__doc__ and "ret_30" in rules.ORDERS
