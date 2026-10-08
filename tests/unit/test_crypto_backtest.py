@@ -316,3 +316,51 @@ def test_open_risk_counts_every_book_and_a_stop_above_its_entry_risks_nothing():
     assert risk.desk_blockers("BTC/USD", "trend", Decimal(1), books, eq, lim) == []      # its own book's rule, not this one
     assert risk.desk_blockers("BTC/USD", "break", Decimal(10**6), books, eq, None) == []
     assert risk.desk_blockers("BTC/USD", "break", Decimal(1), books, eq, risk.DeskLimits(False, Decimal("3.0"))) == []
+
+
+def test_cost_in_r_is_the_gap_between_a_trade_before_and_after_costs():
+    """DEC-0022: a report says what the trades cost in R and what they made before costs."""
+    cfg = _one_pair_cfg()
+    slip_bps, fee = float(cfg["costs"]["slippage_bps"]), float(cfg["costs"]["taker_fee_pct"]) / 100
+    for after, reason in (([(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0)], "target"),
+                          ([(104.0, 104.5, 96.0, 97.0, 2.0)], "stop")):
+        rows = backtest.run(cfg, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0,
+                            B0 + H4 * (len(after) + 1) + 1, names=["break"])
+        x = backtest.trades(rows, "break")[0]
+        assert x["reason"] == reason
+        got = backtest.cost_in_r(rows, "break", slip_bps)
+        # By hand, from prices with the slippage taken back out: what the trade made with no fee and no slippage.
+        s = slip_bps / 10_000
+        qty, raw_in = float(x["qty"]), float(x["entry_price"]) / (1 + s)
+        raw_out = float(x["exit_price"]) / (1 if reason == "target" else 1 - s)
+        gross = qty * (raw_out - raw_in) / float(x["risk0"])
+        assert got["trades"] == 1 and got["gross_mean_r"] == pytest.approx(gross, abs=2e-3)
+        assert got["cost_mean_r"] == pytest.approx(gross - float(x["r"]), abs=2e-3) and got["cost_mean_r"] > 0
+        assert got["cost_mean_r"] > fee * qty * raw_in * 2 / float(x["risk0"]) * 0.9     # two fees are most of it
+        assert got["gross_se_r"] is None                                                  # one trade has no spread
+    assert backtest.cost_in_r([], "break", slip_bps) == {"trades": 0}
+
+
+def test_buy_and_hold_is_the_equal_weight_basket_never_rebalanced():
+    def series(prices):
+        return [Bar(B0 + i * HOUR, p, p, p, p, p, 1.0, 1) for i, p in enumerate(prices)]
+    got = backtest.buy_and_hold({"A": series([10, 20, 15, 20]), "B": series([5, 5, 5, 5]), "C": []}, B0, B0 + 4 * HOUR)
+    assert got == {"pairs": 2, "hours": 4, "return_pct": 50.0, "max_drawdown_pct": -16.67}   # 1.0, 1.5, 1.25, 1.5
+    assert backtest.buy_and_hold({"A": series([10, 20])}, B0 + 10 * HOUR, B0 + 20 * HOUR) == {"pairs": 0}
+    late = backtest.buy_and_hold({"A": series([10, 20, 30]), "B": series([5, 5, 5])[1:]}, B0, B0 + 3 * HOUR)
+    assert late["hours"] == 2 and late["return_pct"] == 25.0             # only the hours both have: A 20 -> 30, B flat
+
+
+def test_the_reading_lines_change_no_figure_and_no_verdict():
+    """`summary` keeps exactly its keys, and a verdict does not look at anything else."""
+    cfg = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0), (105.5, 112.0, 105.0, 111.0, 3.0), (111.0, 111.5, 110.0, 110.5, 1.0)]
+    rows = backtest.run(cfg, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + 4 * H4 + 1)
+    got = backtest.summary(rows, "break", B0, B0 + 4 * H4 + 1, 7, 10_000.0)
+    assert set(got) == {"sleeve", "trades", "trades_per_month", "signals", "refused", "win_rate", "mean_r", "ci_low", "ci_high",
+                        "profit_factor", "max_drawdown_r", "max_drawdown_pct", "total_r", "pnl", "return_pct", "sharpe", "dsr",
+                        "by_reason", "by_pair"}
+    base = {"trades": 40, "dsr": 0.99, "profit_factor": 1.5}
+    hard = {"ci_low": 0.1}
+    extra = {"cost_mean_r": 9.0, "gross_mean_r": -9.0, "benchmark": {"return_pct": 500.0}}
+    assert backtest.verdict({**base, **extra}, {**hard, **extra}, 0.01) == backtest.verdict(base, hard, 0.01)

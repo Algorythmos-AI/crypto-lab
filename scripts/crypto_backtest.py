@@ -94,6 +94,18 @@ def report(res: dict[str, Any]) -> str:
                      f"[{h.get('ci_low', float('nan')):+.3f}, {h.get('ci_high', float('nan')):+.3f}] | "
                      f"{b['profit_factor']} | {b['dsr']:.3f} | {s['control_p']} | {b['max_drawdown_pct']}% | "
                      f"{'PASSED' if v['passed'] else 'FAILED: ' + ', '.join(v['failed_on'])} |")
+    if any(s.get("costs_r", {}).get("trades") for s in res["sleeves"]) or res.get("benchmark", {}).get("return_pct") is not None:
+        lines += ["", "## For reading the result (DEC-0022; never part of a verdict)", "",
+                  "| Sleeve | Cost per trade, mean (median) | Mean R before costs | Its standard error |", "|---|---|---|---|"]
+        for s in res["sleeves"]:
+            c = s.get("costs_r") or {}
+            if c.get("trades"):
+                se = "-" if c["gross_se_r"] is None else f"{c['gross_se_r']:.3f}"
+                lines.append(f"| {s['name']} | {c['cost_mean_r']:.3f}R ({c['cost_median_r']:.3f}R) | {c['gross_mean_r']:+.3f} | {se} |")
+        bm = res.get("benchmark") or {}
+        if bm.get("return_pct") is not None:
+            lines += ["", f"Holding the {bm['pairs']} pairs in equal weight over the span, with no costs: "
+                          f"{bm['return_pct']:+.1f}%, largest drawdown {bm['max_drawdown_pct']:.1f}%."]
     lines += ["", "## Agreement between the history and Kraken (4-hour closes)", "",
               "| Pair | Bars compared | Median | 95th percentile | Largest |", "|---|---|---|---|---|"]
     for name, a in res["agreement"].items():
@@ -139,13 +151,15 @@ def main(argv: list[str] | None = None) -> int:
         p, means = backtest.control(cfg, hourly, infos, start, end, base, n, a.controls, a.seed)
         print(f"{n}: {b['trades']} trades ({b['trades_per_month']}/month); control {time.time() - t1:.0f}s p={p}")
         out.append({"name": n, "hypothesis": cfg["sleeves"][n]["hypothesis"], "config": sleeves.sleeve_hash(cfg, n),
-                    "base": b, "stressed": h, "control_p": None if p is None else round(p, 4),
+                    "base": b, "stressed": h, "costs_r": backtest.cost_in_r(base, n, float(cfg["costs"]["slippage_bps"])),
+                    "control_p": None if p is None else round(p, 4),
                     "control_mean_r": round(float(np.mean(means)), 4) if means else None,
                     "verdict": backtest.verdict(b, h, p)})
     folder = ROOT / a.out
     res = {"id": folder.name.split("-crypto")[0], "decision": "DEC-0015", "start": start, "end": end,
            "pairs": list(pairs), "costs": cfg["costs"], "n_trials": n_trials, "controls": a.controls, "seed": a.seed,
-           "data_hash": data_hash(hourly), "agreement": {} if a.offline else agreement(pairs, hourly), "sleeves": out}
+           "data_hash": data_hash(hourly), "agreement": {} if a.offline else agreement(pairs, hourly), "sleeves": out,
+           "benchmark": backtest.buy_and_hold(hourly, start, end)}
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "result.json").write_text(json.dumps(res, indent=1, sort_keys=True) + "\n")
     (folder / "report.md").write_text(report(res))

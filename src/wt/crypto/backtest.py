@@ -224,6 +224,51 @@ def summary(rows: list[dict[str, Any]], sleeve: str, start: int, end: int, n_tri
     return out
 
 
+def cost_in_r(rows: list[dict[str, Any]], sleeve: str, slippage_bps: float) -> dict[str, Any]:
+    """What a sleeve's trades cost in R, and what they made before costs (DEC-0022). For reading a result
+    correctly; never part of a verdict.
+
+    Cost is both fees plus slippage, over the risk taken at entry. Slippage is on the entry and on every exit
+    except a target, as `sleeves.manage` charges it. R before costs is the recorded R plus that cost.
+    """
+    slip = float(slippage_bps) / 10_000
+    cost, gross = [], []
+    for x in trades(rows, sleeve):
+        risk = float(x.get("risk0") or 0)
+        if risk <= 0:
+            continue
+        qty, p_in, p_out = float(x["qty"]), float(x["entry_price"]), float(x["exit_price"])
+        slipped = qty * p_in * slip / (1 + slip)
+        if x.get("reason") != "target" and slip < 1:
+            slipped += qty * p_out * slip / (1 - slip)
+        c = (float(x["fees"]) + slipped) / risk
+        cost.append(c)
+        gross.append(float(x["r"]) + c)
+    if not cost:
+        return {"trades": 0}
+    g = np.array(gross)
+    return {"trades": len(cost), "cost_mean_r": round(float(np.mean(cost)), 4), "cost_median_r": round(float(np.median(cost)), 4),
+            "gross_mean_r": round(float(g.mean()), 4),
+            "gross_se_r": round(float(g.std(ddof=1) / np.sqrt(len(g))), 4) if len(g) > 1 else None}
+
+
+def buy_and_hold(hourly: dict[str, list[Bar]], start: int, end: int) -> dict[str, Any]:
+    """Holding the pairs in equal weight from `start` to `end`, bought once and never rebalanced, with no costs:
+    the return and the largest drawdown, on the hours every pair has a bar. The yardstick a long-only result is
+    read against (DEC-0022); never part of a verdict."""
+    series = {k: {b.t: b.c for b in v if start <= b.t < end and b.c > 0} for k, v in hourly.items()}
+    series = {k: v for k, v in series.items() if v}
+    if not series:
+        return {"pairs": 0}
+    common = sorted(set.intersection(*(set(v) for v in series.values())))
+    if len(common) < 2:
+        return {"pairs": len(series)}
+    value = np.mean([[v[t] / v[common[0]] for t in common] for v in series.values()], axis=0)
+    peak = np.maximum.accumulate(value)
+    return {"pairs": len(series), "hours": len(common), "return_pct": round(float(value[-1] - 1) * 100, 2),
+            "max_drawdown_pct": round(float(((value - peak) / peak).min()) * 100, 2)}
+
+
 def verdict(base: dict[str, Any], stressed: dict[str, Any], control_p: float | None) -> dict[str, Any]:
     """DEC-0015's falsification rules. `stressed` is the same sleeve at 1.5x slippage."""
     why = []
