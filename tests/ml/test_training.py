@@ -252,5 +252,36 @@ class Calibration(unittest.TestCase):
         self.assertEqual(validate.calibration(ex[:60], x[:60], w[:60], fit, 30 * DAY), (1.0, 0.0))    # too few: none
 
 
+
+class Selection(unittest.TestCase):
+    """DEC-0026: a model is a candidate only if it beats taking every signal by more than its own standard error."""
+
+    def test_the_desks_first_weekly_training_has_no_candidate(self) -> None:
+        # The figures that registered a model on 2026-10-08: ahead of M0 by 0.0056 with a standard error of 0.0253.
+        best = {"m1": {"log_loss": 0.586860, "log_loss_se": 0.025332}, "m2": {"log_loss": 0.604095, "log_loss_se": 0.031028}}
+        self.assertIsNone(train.choose(best, {"log_loss": 0.592499}))
+        # And EXP-0019's, which had none under the old rule either.
+        best = {"m1": {"log_loss": 0.606059, "log_loss_se": 0.03}, "m2": {"log_loss": 0.606406, "log_loss_se": 0.03}}
+        self.assertIsNone(train.choose(best, {"log_loss": 0.593336}))
+
+    def test_a_clear_margin_is_a_candidate_and_the_simplest_one_within_reach_of_the_best_is_chosen(self) -> None:
+        m0 = {"log_loss": 0.600}
+        self.assertEqual(train.choose({"m1": {"log_loss": 0.550, "log_loss_se": 0.02}, "m2": {"log_loss": 0.560, "log_loss_se": 0.02}}, m0), "m1")
+        # M2 is best; M1 is within a standard error of it and clears M0 by more than its own: the simpler one.
+        self.assertEqual(train.choose({"m1": {"log_loss": 0.555, "log_loss_se": 0.04}, "m2": {"log_loss": 0.540, "log_loss_se": 0.02}}, m0), "m1")
+        # M1 is within reach of the best but does not clear M0 by its own standard error: M2 is the candidate.
+        self.assertEqual(train.choose({"m1": {"log_loss": 0.558, "log_loss_se": 0.05}, "m2": {"log_loss": 0.540, "log_loss_se": 0.02}}, m0), "m2")
+        # Exactly on the line is not more than.
+        self.assertIsNone(train.choose({"m1": {"log_loss": 0.580, "log_loss_se": 0.02}}, m0))
+        self.assertEqual(train.choose({"m1": {"log_loss": 0.5799, "log_loss_se": 0.02}}, m0), "m1")
+
+    def test_without_a_standard_error_or_a_score_there_is_no_candidate(self) -> None:
+        m0 = {"log_loss": 0.600}
+        self.assertIsNone(train.choose({"m1": {"log_loss": 0.40, "log_loss_se": None}}, m0))     # one fold: no spread
+        self.assertIsNone(train.choose({"m1": {"log_loss": None, "log_loss_se": None}}, m0))
+        self.assertIsNone(train.choose({}, m0))
+        self.assertIsNone(train.choose({"m1": {"log_loss": 0.40, "log_loss_se": 0.01}}, {"log_loss": None}))
+        self.assertEqual(train.choose({"m1": {"log_loss": None, "log_loss_se": None}, "m2": {"log_loss": 0.50, "log_loss_se": 0.02}}, m0), "m2")
+
 if __name__ == "__main__":
     unittest.main()

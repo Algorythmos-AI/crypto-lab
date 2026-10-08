@@ -5,7 +5,8 @@
     .venv-ml/bin/python -m wt.ml.train --out research/experiments/EXP-0017-crypto-models
 
 The settings tried are the charter's and no others. The simplest model whose out-of-sample log-loss is within one
-standard error of the best is chosen, provided it beats the model that takes every signal (M0). If none does,
+standard error of the best is chosen, provided it beats the model that takes every signal (M0) by more than its own
+standard error (DEC-0026). If none does,
 there is no candidate, nothing is registered, and that is the result.
 """
 from __future__ import annotations
@@ -73,6 +74,27 @@ def check_universe(cfg: dict[str, Any], loaded: dict[str, list[Any]]) -> None:
         raise TooFewPairs(f"only {len(loaded)} of {wanted} training pairs loaded")
 
 
+def choose(best: dict[str, dict[str, Any]], m0: dict[str, Any]) -> str | None:
+    """The model to register, or None (DEC-0016, 3, as DEC-0026 amends it).
+
+    A candidate beats taking every signal by more than its own standard error across the folds: any smaller
+    margin is one a model that is the baseline plus noise shows about every other week. Among candidates, the
+    simplest whose log-loss is within one standard error of the best model's. No standard error (fewer than two
+    scored folds), no candidate."""
+    scored = {k: v for k, v in best.items() if v.get("log_loss") is not None}
+    if not scored or m0.get("log_loss") is None:
+        return None
+    top = min(scored.values(), key=lambda d: d["log_loss"])
+    bar = top["log_loss"] + (top["log_loss_se"] or 0.0)
+    for k in ORDER:
+        b = scored.get(k)
+        if b is None or b.get("log_loss_se") is None:
+            continue
+        if b["log_loss"] <= bar and b["log_loss"] + b["log_loss_se"] < m0["log_loss"]:
+            return k
+    return None
+
+
 def compare(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[str]) -> dict[str, Any]:
     """Every allowed setting of every model through the walk-forward folds, and the choice."""
     lg = cfg["learning"]
@@ -89,11 +111,8 @@ def compare(cfg: dict[str, Any], examples: list[dataset.Example], inputs: list[s
         tried["m2"].append({"settings": s, **res})
     best = {k: min(v, key=lambda d: d["log_loss"]) for k, v in tried.items()}
     m0 = validate.walk_forward(examples, x, w, None, n, embargo, cut)
-    top = min(best.values(), key=lambda d: d["log_loss"])
-    bar = top["log_loss"] + (top["log_loss_se"] or 0.0)
-    chosen = next((k for k in ORDER if best[k]["log_loss"] <= bar and best[k]["log_loss"] < m0["log_loss"]), None)
-    return {"m0": m0, "tried": tried, "best": best, "chosen": chosen, "embargo_days": embargo // DAY, "folds": n,
-            "calibration": "platt, 3 inner purged folds (DEC-0017)", "attempt": 3,
+    return {"m0": m0, "tried": tried, "best": best, "chosen": choose(best, m0), "embargo_days": embargo // DAY, "folds": n,
+            "calibration": "platt, 3 inner purged folds (DEC-0017)", "attempt": 4,
             "effective_n": round(dataset.effective_n(w), 1)}
 
 
@@ -172,11 +191,12 @@ def report(res: dict[str, Any]) -> str:
             lines.append(row(label + mark, d, ", ".join(f"{a}={b}" for a, b in d["settings"].items())))
     lines += ["", "## Choice", ""]
     if c["chosen"] is None:
-        lines.append("**No candidate.** No model beat taking every signal on unseen data, so none is registered.")
+        lines.append("**No candidate.** No model beat taking every signal on unseen data by more than its own standard "
+                     "error (DEC-0026), so none is registered.")
     else:
         b = c["best"][c["chosen"]]
         lines.append(f"**{c['chosen'].upper()}** ({', '.join(f'{a}={v}' for a, v in b['settings'].items())}): the simplest "
-                     "model within one standard error of the best that also beats M0.")
+                     "model within one standard error of the best that also beats M0 by more than its own standard error.")
         lines += ["", "What it leans on, strongest first:", ""]
         lines += [f"- `{d['input']}`: {d.get('weight', d.get('gain_share'))}" for d in res["importance"][:8]]
     lines += ["", "## Notes", "",
@@ -213,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = dataset.usable_inputs(examples)
     comparison = compare(cfg, examples, inputs)
     res: dict[str, Any] = {
-        "decision": "DEC-0018", "start": start, "end": end, "pairs": sorted(hourly), "examples": len(examples),
+        "decision": "DEC-0026", "start": start, "end": end, "pairs": sorted(hourly), "examples": len(examples),
         "win_rate": float(np.mean([e.y for e in examples])), "mean_r": float(np.mean([e.r for e in examples])),
         "by_sleeve": {n: {"n": sum(e.sleeve == n for e in examples),
                           "mean_r": round(float(np.mean([e.r for e in examples if e.sleeve == n])), 4)}
