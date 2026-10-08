@@ -148,6 +148,9 @@ def test_a_promoted_model_can_only_skip_or_halve():
     assert max(s.factor(i) for i in range(6)) <= 1.0
 
 
+CHECK = ("-c", deploy.ML_IMPORT_CHECK)                  # the built environment is asked to import its libraries
+
+
 def _fake_uv(tmp_path, calls, fail_on=None):
     def run(*cmd, check=True, timeout=600):
         calls.append(cmd[1:3])
@@ -169,7 +172,7 @@ def test_the_ml_environment_syncs_only_when_its_lock_changes_and_never_fails_a_d
     monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
     assert deploy.sync_ml() == "none" and calls == []                       # a checkout from before the lock existed
     (tmp_path / "requirements-ml.lock.txt").write_text("lightgbm==4.7.0 --hash=sha256:aa\n")
-    assert deploy.sync_ml() == "synced" and calls == [("venv", "--quiet"), ("pip", "sync")]
+    assert deploy.sync_ml() == "synced" and calls == [("venv", "--quiet"), ("pip", "sync"), CHECK]
     want = hashlib.sha256((tmp_path / "requirements-ml.lock.txt").read_bytes()).hexdigest()
     assert (tmp_path / ".venv-ml" / ".lock-sha256").read_text().strip() == want
     calls.clear()
@@ -222,7 +225,7 @@ def test_the_swap_waits_for_the_learning_job_and_a_built_environment_is_not_buil
         assert deploy.sync_ml(swap_wait_s=0.0) == "pending"
         assert "4.7.0" in (live / "built-from").read_text()             # it keeps the environment it started in
         assert "4.8.0" in (tmp_path / ".venv-ml.next" / "built-from").read_text()
-        assert calls == [("venv", "--quiet"), ("pip", "sync"), ("fire", "ML environment built, not yet in use")]
+        assert calls == [("venv", "--quiet"), ("pip", "sync"), CHECK, ("fire", "ML environment built, not yet in use")]
     calls.clear()
     assert deploy.sync_ml() == "synced" and calls == [("resolve",)]     # only the swap was left: nothing is rebuilt
     assert "4.8.0" in (live / "built-from").read_text() and not (tmp_path / ".venv-ml.next").exists()
@@ -233,6 +236,27 @@ def test_the_swap_waits_for_the_learning_job_and_a_built_environment_is_not_buil
     with locks.job_lock(deploy.ML_ENV_LOCK):
         assert deploy.sync_ml() == "busy" and calls == []
     assert "crypto-learn" in deploy.JOBS and all(n in deploy.JOBS for n in deploy.ML_USERS)
+
+
+def test_an_environment_that_cannot_import_its_libraries_is_never_swapped_in(tmp_path, monkeypatch):
+    """Found on the host: the wheels installed, and `import lightgbm` failed for want of the system's OpenMP."""
+    from wt.ops import locks
+    calls: list[tuple] = []
+    monkeypatch.setattr(deploy, "ROOT", tmp_path)
+    monkeypatch.setattr(locks, "LOCK_DIR", tmp_path / "locks")
+    said: list[str] = []
+    monkeypatch.setattr(deploy, "Alerts", lambda: type("A", (), {"fire": lambda *a, **k: said.append(a[3]),
+                                                                "resolve": lambda *a, **k: None})())
+    lock, live = tmp_path / "requirements-ml.lock.txt", tmp_path / ".venv-ml"
+    lock.write_text("lightgbm==4.7.0 --hash=sha256:aa\n")
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls))
+    assert deploy.sync_ml() == "synced" and CHECK in calls
+    lock.write_text("lightgbm==4.8.0 --hash=sha256:bb\n")
+    monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls, fail_on=CHECK))
+    assert deploy.sync_ml() == "failed" and "no network" in said[-1]
+    assert "4.7.0" in (live / "built-from").read_text() and not (tmp_path / ".venv-ml.next").exists()
+    for f in ("deploy/gcp/cloud-init.yaml", "deploy/oci/cloud-init.yaml.tftpl"):
+        assert "libgomp1" in (ROOT / f).read_text()
 
 
 def test_the_ml_lock_is_part_of_the_checked_code_and_of_the_audit():
