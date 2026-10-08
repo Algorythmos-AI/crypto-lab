@@ -139,3 +139,18 @@ def test_equity_marks_are_thinned_to_one_per_four_hours_and_the_newest_is_always
     assert len(snapshot.thinned(long)) == 90 * 24 // snapshot.CURVE_STEP_H and snapshot.CURVE_DAYS == 90
     assert len(json.dumps(snapshot.thinned(long))) * 8 < publish.BUDGET        # eight books' curves fit the budget
 
+
+
+def test_a_sleeves_funnel_counts_every_signal_once_and_the_refusals_add_up():
+    """What became of the signals a rule produced, as counts and codes only: nothing free-text can reach the page."""
+    rows = [{"kind": "entry", "t": "2026-10-01T00:00:10+00:00", "pair": "BTC/USD"},
+            {"kind": "refused", "t": "2026-10-01T04:00:10+00:00", "pair": "ETH/USD", "why": ["positions", "exposure"]},
+            {"kind": "refused", "t": "2026-10-01T04:00:10+00:00", "pair": "SOL/USD", "why": ["positions"]},
+            {"kind": "refused", "t": "2026-10-02T00:00:10+00:00", "pair": "BTC/USD", "why": ["desk_coin"]},
+            {"kind": "refused", "t": "2026-10-02T04:00:10+00:00", "pair": "XRP/USD", "why": []},
+            {"kind": "exit", "t": "2026-10-02T08:00:10+00:00", "pair": "BTC/USD"}, {"kind": "sleeve", "t": "x"}]
+    got = snapshot.funnel(rows)
+    assert got == {"since": "2026-10-01T00:00:10+00:00", "fired": 5, "entered": 1,
+                   "refused": [{"code": "positions", "count": 2}, {"code": "desk_coin", "count": 1}, {"code": "unknown", "count": 1}]}
+    assert sum(r["count"] for r in got["refused"]) == got["fired"] - got["entered"]
+    assert snapshot.funnel([{"kind": "exit"}, {"kind": "sleeve"}]) is None          # a sleeve that has recorded no signal

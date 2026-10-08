@@ -84,6 +84,9 @@ ALLOW: dict[str, Any] = {
                  "recent": [{"pair": S, "entry_time": S, "exit_time": S, "entry_price": N, "exit_price": N, "qty": N,
                              "pnl": N, "r": N, "reason": S, "held_min": N}],
                  "signals": [{"t": S, "pair": S, "outcome": S, "why": [S]}],
+                 # Every signal the journal holds for the sleeve, as counts: how many fired, how many were bought,
+                 # and what refused the rest. A refusal with several codes is counted under its first.
+                 "funnel": {"since": S, "fired": I, "entered": I, "refused": [{"code": S, "count": I}]},
                  "why_not": [{"pair": S, "bar": S, "fire": B, "why": [S]}],
                  "equity_curve": [{"t": S, "equity": N}]}],
     # ---- the challengers (DEC-0016, 5): every strategy idea tried, with the verdict of its backtest ----
@@ -313,6 +316,22 @@ def exit_r(rows: list[dict[str, Any]]) -> dict[str, float]:
     return out
 
 
+def funnel(mine: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """A sleeve's signals as a funnel: fired, bought, and refused by reason, over every row the journal holds for
+    it. Codes and counts only. A refusal carries every code that applied; it is counted once, under the first,
+    so the refusals add up to the signals that were not bought."""
+    decided = [r for r in mine if r.get("kind") in ("entry", "refused")]
+    if not decided:
+        return None
+    why: dict[str, int] = {}
+    for r in decided:
+        if r["kind"] == "refused":
+            code = next((str(c) for c in (r.get("why") or []) if c), "unknown")
+            why[code] = why.get(code, 0) + 1
+    return {"since": decided[0].get("t"), "fired": len(decided), "entered": sum(1 for r in decided if r["kind"] == "entry"),
+            "refused": [{"code": k, "count": v} for k, v in sorted(why.items(), key=lambda kv: (-kv[1], kv[0]))]}
+
+
 def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> list[dict[str, Any]]:
     """One entry per tournament sleeve, from its own book and its own rows of the journal. Open positions are
     valued at the last bid the cycle read (the snapshot never calls the venue). Nothing is summed across sleeves."""
@@ -401,6 +420,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
             "signals": [{"t": r.get("t"), "pair": r.get("pair"),
                          "outcome": "entered" if r["kind"] == "entry" else "refused", "why": r.get("why") or []}
                         for r in mine if r.get("kind") in ("entry", "refused")][-12:][::-1],
+            "funnel": funnel(mine),
             "why_not": [{"pair": pair, "bar": _iso(v["bar"]) if isinstance(v.get("bar"), int) else None,
                          "fire": bool(v.get("fire")), "why": v.get("why") or []}
                         for pair, v in ((last_eval or {}).get("pairs") or {}).items() if isinstance(v, dict)],
