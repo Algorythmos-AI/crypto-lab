@@ -19,7 +19,8 @@ State lives in `var/crypto/`: `book.json` (the book and the cycle's bookkeeping)
 
 ## First install (owner)
 
-1. healthchecks.io: create the check `wt-crypto` (see [dead-man switches](dead-man-switches.md)).
+1. healthchecks.io: create the checks `wt-crypto`, `wt-crypto-challengers` and `wt-crypto-learn` (see
+   [dead-man switches](dead-man-switches.md)).
 2. After the deploy that carries the jobs: `sudo wt-install-units` (gate open).
 3. Nothing else. The first cycle creates `var/crypto/` **with the kill switch on**: the desk records bars and
    publishes, and opens nothing.
