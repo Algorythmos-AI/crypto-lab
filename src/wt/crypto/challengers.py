@@ -53,7 +53,7 @@ MIN_CONFIRM_TRADES = 15                 # DEC-0021: closed trades on the earlier
 UNCONFIRMED = "not_confirmed_on_earlier_history"
 LIVE, RETIRED = "live", "retired"
 C1_KEYS = ("passed", "failed_on", "base", "stressed", "control_p", "control_mean_r", "span", "data_hash", "n_trials", "t",
-           "confirm")
+           "confirm", "costs_r")
 OFF_CODE, RETIRED_CODE = "learning_off", "retired"
 
 
@@ -322,6 +322,8 @@ def gate(cfg: dict[str, Any], dials: dict[str, Any], n_trials: int, hourly: dict
             "base": {k: base.get(k) for k in keep}, "stressed": {k: stressed.get(k) for k in ("mean_r", "ci_low", "ci_high")},
             "control_p": None if p is None else round(float(p), 4),
             "control_mean_r": round(float(np.mean(means)), 4) if means else None,
+            # For reading the verdict, never part of it (DEC-0022): what the trades cost in R and made before costs.
+            "costs_r": backtest.cost_in_r(rows, spec.name, float(cfg["costs"]["slippage_bps"])),
             "span": [start, end], "n_trials": n_trials, "controls": controls, "seed": seed}
 
 
@@ -516,8 +518,10 @@ def run(now: float | None = None, desk: Desk | None = None, cfg: dict[str, Any] 
             rec["c1"] = {k: row.get(k) for k in C1_KEYS}
             rec["status"] = "passed" if res["passed"] else "failed"
             b, conf = res["base"], res.get("confirm")
+            cost = res.get("costs_r") or {}
             print(f"gate C1 {cid}: {'PASSED' if res['passed'] else 'failed on ' + ', '.join(res['failed_on'])} "
                   f"({b.get('trades')} trades, mean R {b.get('mean_r')}"
+                  + (f", cost {cost['cost_mean_r']}R a trade, {cost['gross_mean_r']:+}R before costs" if cost.get("trades") else "")
                   + ("" if conf is None else f"; earlier history: {conf['trades']} trades, mean R {conf['mean_r']}") + ")")
             save_state(desk, state, now)
 

@@ -438,3 +438,44 @@ def test_a_signal_the_measure_has_no_value_for_comes_last_and_an_unknown_order_i
     with pytest.raises(ValueError, match="unknown order"):
         backtest.run(cfg, history, infos, B0, end, specs={rules.TREND_R: odd})
     assert sleeves.settle_ranked.__doc__ and "ret_30" in rules.ORDERS
+
+
+# ---------------------------------------------------------------- every result says what it is worth
+def _script(name: str):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    spec = importlib.util.spec_from_file_location(name, scripts / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_a_report_says_what_the_trades_cost_what_the_sample_could_confirm_and_what_it_cannot_show():
+    mod = _script("crypto_backtest")
+    sleeve = {"name": "trend", "base": {"trades": 360, "trades_per_month": 15.0, "signals": 1276, "win_rate": 0.28, "mean_r": -0.163,
+                                        "profit_factor": 0.69, "dsr": 0.0003, "max_drawdown_pct": -52.9},
+              "stressed": {"ci_low": -0.319, "ci_high": 0.001}, "control_p": 0.0099,
+              "verdict": {"passed": False, "failed_on": ["profit_factor"]},
+              "costs_r": {"trades": 360, "cost_mean_r": 0.2522, "cost_median_r": 0.2281, "gross_mean_r": 0.089, "gross_se_r": 0.064}}
+    res = {"id": "EXP-TEST", "n_trials": 12, "start": B0, "end": B0 + 730 * DAY, "pairs": ["BTC/USD"], "data_hash": "x",
+           "costs": {"taker_fee_pct": 0.4, "slippage_bps": 5}, "controls": 100, "agreement": {}, "sleeves": [sleeve],
+           "benchmark": {"pairs": 8, "hours": 17510, "return_pct": 11.79, "max_drawdown_pct": -73.28}}
+    text = mod.report(res)
+    assert "| trend | 0.252R (0.228R) | +0.089 | 0.064 | 0.16R |" in text            # (0.001 + 0.319) / 2
+    assert "+11.8%, largest drawdown -73.3%" in text
+    assert "## What this result cannot show" in text and "chosen with hindsight" in text and "ever been filled on a venue" in text
+    assert mod.detectable({}) == "-" and mod.detectable({"ci_low": -0.1, "ci_high": 0.3}) == "0.20R"
+    assert "## What this result cannot show" in "\n".join(_script("crypto_ranked").LIMITS)
+
+
+def test_a_signal_row_names_the_definitions_its_inputs_were_computed_with():
+    from wt.crypto import signals
+    cfg = _one_pair_cfg()
+    after = [(104.0, 106.0, 103.5, 105.5, 2.0)] * 3
+    rows = backtest.run(cfg, {"BTC/USD": breakout_history(after)}, {"XBTUSD": INFO["XBTUSD"]}, B0, B0 + 4 * H4 + 1)
+    sigs = [r for r in rows if r["kind"] == "signal"]
+    assert sigs and all(r["features"] == signals.features_id() for r in sigs)
+    assert all(tuple(r["inputs"]) == signals.INPUTS for r in sigs)                  # the id is beside the inputs, not in them

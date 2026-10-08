@@ -487,3 +487,15 @@ def test_a_failed_fetch_is_tried_again_before_it_costs_a_challenger_a_day():
     calls.clear()
     with pytest.raises(DataError):
         challengers._retried(lambda: (_ for _ in ()).throw(DataError("down")), waits.append)
+
+
+def test_a_challengers_verdict_records_what_its_trades_cost_and_made_before_costs():
+    """DEC-0022: for reading the verdict, never part of it."""
+    hourly, infos = MARKET
+    res = challengers.gate(ONE, WIDE, 9, hourly, infos, B0, B0 + H4 * 5, controls=2)
+    cost = res["costs_r"]
+    assert set(cost) >= {"trades"} and "costs_r" in challengers.C1_KEYS
+    if cost["trades"]:
+        assert cost["cost_mean_r"] > 0 and cost["gross_mean_r"] == pytest.approx(res["base"]["mean_r"] + cost["cost_mean_r"], abs=2e-3)
+    without = {k: v for k, v in res.items() if k != "costs_r"}
+    assert backtest.verdict(res["base"], res["stressed"], res["control_p"]) == backtest.verdict(without["base"], without["stressed"], without["control_p"])

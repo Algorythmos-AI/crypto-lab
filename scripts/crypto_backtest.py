@@ -69,6 +69,25 @@ def data_hash(hourly: dict[str, list[Bar]]) -> str:
     return h.hexdigest()[:16]
 
 
+def detectable(stressed: dict[str, Any]) -> str:
+    """Half the width of the 95% interval of mean R: about the smallest true edge the interval test passes half
+    the time. For reading a failure: was there nothing, or nothing this sample could have seen."""
+    lo, hi = stressed.get("ci_low"), stressed.get("ci_high")
+    return "-" if lo is None or hi is None else f"{(hi - lo) / 2:.2f}R"
+
+
+# What a backtest on this desk cannot show, stated in every report so that a result is not read for more than it is.
+LIMITS = ["## What this result cannot show", "",
+          "- **The pairs were chosen with hindsight.** They are coins that exist and are large today, tested on a past in",
+          "  which that was not known. A coin that was delisted or faded is not here. This flatters a result.",
+          "- **One span.** Two years of one market. A rule can pass on it and fail on the next two.",
+          "- **Stops are resolved on hourly bars** in history and on one-minute bars on the desk. Inside an hour the",
+          "  order of a high and a low is unknown, and the worse one is taken.",
+          "- **Costs are assumptions:** one taker fee and one slippage figure for every pair, no spread, no depth. The",
+          "  venue's fee depends on 30-day volume, and nothing here has ever been filled on a venue.",
+          "- **Paper.** Passing a gate here is permission to keep watching on paper. It is not evidence for real money.", ""]
+
+
 def report(res: dict[str, Any]) -> str:
     day = lambda t: dt.datetime.fromtimestamp(t, dt.UTC).date().isoformat()      # noqa: E731
     lines = [f"# {res['id']}: crypto tournament sleeves, gate C1", "",
@@ -96,12 +115,16 @@ def report(res: dict[str, Any]) -> str:
                      f"{'PASSED' if v['passed'] else 'FAILED: ' + ', '.join(v['failed_on'])} |")
     if any(s.get("costs_r", {}).get("trades") for s in res["sleeves"]) or res.get("benchmark", {}).get("return_pct") is not None:
         lines += ["", "## For reading the result (DEC-0022; never part of a verdict)", "",
-                  "| Sleeve | Cost per trade, mean (median) | Mean R before costs | Its standard error |", "|---|---|---|---|"]
+                  "| Sleeve | Cost per trade, mean (median) | Mean R before costs | Its standard error | Smallest edge this sample could confirm |",
+                  "|---|---|---|---|---|"]
         for s in res["sleeves"]:
             c = s.get("costs_r") or {}
             if c.get("trades"):
                 se = "-" if c["gross_se_r"] is None else f"{c['gross_se_r']:.3f}"
-                lines.append(f"| {s['name']} | {c['cost_mean_r']:.3f}R ({c['cost_median_r']:.3f}R) | {c['gross_mean_r']:+.3f} | {se} |")
+                lines.append(f"| {s['name']} | {c['cost_mean_r']:.3f}R ({c['cost_median_r']:.3f}R) | {c['gross_mean_r']:+.3f} | {se} | "
+                             f"{detectable(s.get('stressed') or {})} |")
+        lines += ["", "The last column is half the width of the 95% interval at stressed costs: a true mean R after costs "
+                      "smaller than that would more often fail the interval test than pass it."]
         bm = res.get("benchmark") or {}
         if bm.get("return_pct") is not None:
             lines += ["", f"Holding the {bm['pairs']} pairs in equal weight over the span, with no costs: "
@@ -114,7 +137,8 @@ def report(res: dict[str, Any]) -> str:
               "- The backtest calls the desk's own `sleeves.step_pair`: entry rules, levels, sizing, limits and exit",
               "  resolution are the code that trades. Stops and targets resolve on hourly bars, stop first.",
               "- The daily-loss latch is cleared at the next UTC day; on the desk the owner clears it.",
-              "- A sleeve that fails stops opening paper trades unless the owner records otherwise (DEC-0014).", ""]
+              "- A sleeve that fails stops opening paper trades unless the owner records otherwise (DEC-0014).", "",
+              *LIMITS]
     return "\n".join(lines)
 
 

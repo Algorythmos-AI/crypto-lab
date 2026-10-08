@@ -491,6 +491,9 @@ def _signal(run: Run, sleeve: str, name: str, last: Bar, bars: list[Bar], atr: f
     return {"kind": "signal", "sid": f"{sleeve}|{name}|{last.t}", "t": _iso(run.now), "pair": name, "bar": last.t,
             "taken": not refused, "why": list(refused), "price": round(price, 8), "stop": round(stop, 8),
             "target": None if target is None else round(target, 8), "atr": round(atr, 8),
+            # Which definitions the inputs below were computed with (DEC-0022): a row recorded before an input's
+            # meaning changed can then be told from one recorded after.
+            "features": signals.features_id(),
             "inputs": signals.inputs(bars, price, stop, atr, None if quote is None else quote.spread_pct,
                                      run.market, held, run.specs[sleeve].c.timeframe_min),
             **run.extra[sleeve]}

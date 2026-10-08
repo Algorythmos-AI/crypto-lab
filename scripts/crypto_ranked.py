@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import numpy as np  # noqa: E402
 
-from crypto_backtest import data_hash, pair_infos  # noqa: E402
+from crypto_backtest import LIMITS, data_hash, pair_infos  # noqa: E402
 from wt.core.config import load_yaml  # noqa: E402
 from wt.crypto import backtest, challengers, rules  # noqa: E402
 from wt.crypto.data import CoinbasePublic  # noqa: E402
@@ -99,7 +99,7 @@ def report(res: dict[str, Any]) -> str:
     lines += ["## Confirmation on the two years before (DEC-0021)", "",
               "Not run: only a variant that passes gate C1 touches that history." if cf is None else
               f"{'CONFIRMED' if cf['passed'] else 'NOT CONFIRMED'}: {cf['trades']} trades, mean R {cf['mean_r']}, "
-              f"profit factor {cf['profit_factor']}, on {len(cf['pairs'])} pairs.", ""]
+              f"profit factor {cf['profit_factor']}, on {len(cf['pairs'])} pairs.", "", *LIMITS]
     return "\n".join(lines)
 
 
