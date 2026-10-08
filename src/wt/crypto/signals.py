@@ -23,6 +23,17 @@ INPUTS = ("stop_pct", "atr_pct", "dist_ema20_pct", "dist_ema50_pct", "volume_rat
           "btc_above_sma50", "btc_ret_1d", "breadth", "held_elsewhere", "spread_pct", "hour_utc", "day_of_week")
 
 
+# Raise this when the meaning of an input changes while its name stays (1: until DEC-0018, when `breadth` counted
+# the training pairs). A model records the id it was trained with and is not used with another one.
+FEATURES_VERSION = 2
+
+
+def features_id() -> str:
+    """What the inputs are, as one short id: their names in order and the version of their definitions."""
+    import hashlib
+    return hashlib.sha256(f"{FEATURES_VERSION}|{','.join(INPUTS)}".encode()).hexdigest()[:12]
+
+
 def _pct(a: float, b: float | None) -> float | None:
     return round((a / b - 1) * 100, 4) if b else None
 

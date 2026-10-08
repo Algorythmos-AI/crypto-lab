@@ -114,6 +114,22 @@ def test_every_way_the_scorer_can_fail_ends_in_a_reason_and_no_scores(desk, tmp_
     assert got == (None, why)
 
 
+def test_a_model_trained_on_other_inputs_is_not_used(desk):
+    """The inputs' names can stay while their meaning changes (`breadth` did, in DEC-0018). A model records the id
+    of the definitions it was trained with; with another id the scorer gives a reason and the trade is unfiltered."""
+    from wt.crypto import signals
+    assert signals.features_id() == signals.features_id() and len(signals.features_id()) == 12
+    p = register(desk)
+    pointer = desk.state_dir / "models" / "current.json"
+    d = json.loads(pointer.read_text())
+    assert p.features == "" and scorer.score([{"atr_pct": 1.0}], desk, python=sys.executable, root=ROOT)[1] is None
+    pointer.write_text(json.dumps({**d, "features": signals.features_id()}))
+    assert scorer.score([{"atr_pct": 1.0}], desk, python=sys.executable, root=ROOT)[1] is None
+    pointer.write_text(json.dumps({**d, "features": "0" * 12}))
+    assert scorer.score([{"atr_pct": 1.0}], desk, python=sys.executable, root=ROOT) == (None, "features_changed")
+    assert "features_changed" not in scorer.QUIET                        # it is a fault: someone is told
+
+
 def test_a_stale_or_damaged_model_and_a_missing_environment_are_reasons_too(desk, tmp_path):
     assert scorer.score([{"a": 1}], desk, python=tmp_path / "absent", root=ROOT) == (None, "no_environment")
     assert scorer.score([{"a": 1}], desk, python=sys.executable, root=ROOT) == (None, "no_model")

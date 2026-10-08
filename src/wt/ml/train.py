@@ -21,6 +21,7 @@ import numpy as np
 
 from wt.core.config import ROOT, load_yaml
 from wt.core.desk import DESKS
+from wt.crypto import signals
 from wt.crypto.data import CoinbasePublic, DataError
 from wt.crypto.history import DAY, WARMUP_D, load_hourly
 from wt.ml import dataset, modelfile, models, validate
@@ -241,7 +242,8 @@ def main(argv: list[str] | None = None) -> int:
                     # each input, and the scores, into five equal parts.
                     "drift": {"edges": drift_edges(dataset.matrix(examples, inputs), inputs), "scores": quintiles(scores)}}
             modelfile.register(DESKS["crypto"].state_dir / "models", version, kind, body, inputs, trained, cutoff, half,
-                               card, (cal_a, cal_b), lineage)
+                               {**card, "features": signals.features_id()}, (cal_a, cal_b), lineage,
+                               signals.features_id())
             print(f"registered {version}")
     print(json.dumps({"chosen": chosen, "m0": comparison["m0"]["log_loss"],
                       **{k: v["log_loss"] for k, v in comparison["best"].items()}}))

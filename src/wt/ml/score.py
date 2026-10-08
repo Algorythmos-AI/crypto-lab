@@ -20,9 +20,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from wt.crypto import signals
 from wt.ml.modelfile import ModelError, Pointer, read_model, read_pointer
 
-EXIT = {"no_model": 3, "bad_pointer": 4, "bad_model": 4, "stale": 5}
+EXIT = {"no_model": 3, "bad_pointer": 4, "bad_model": 4, "stale": 5, "features": 6}
 
 
 def _value(row: dict[str, Any], name: str) -> float:
@@ -61,6 +62,9 @@ def boosted(body: bytes, p: Pointer, rows: list[dict[str, Any]]) -> list[float]:
 
 def score(models: Path, rows: list[dict[str, Any]], now: dt.datetime, max_age_days: float) -> dict[str, Any]:
     p = read_pointer(models)
+    if p.features and p.features != signals.features_id():
+        # Trained on inputs that meant something else. A score from it would be a number about another question.
+        raise ModelError("features")
     body = read_model(p, now, max_age_days)
     a, b = p.calibration
     scores = [_platt(s, a, b) for s in (logistic if p.kind == "logistic" else boosted)(body, p, rows)]

@@ -20,7 +20,7 @@ from wt.core.desk import Desk
 ML_PYTHON = ".venv-ml/bin/python"
 TIMEOUT_S = 20.0
 MAX_AGE_DAYS = 14.0
-REASONS = {3: "no_model", 4: "bad_model", 5: "stale", 2: "bad_request"}
+REASONS = {3: "no_model", 4: "bad_model", 5: "stale", 2: "bad_request", 6: "features_changed"}
 QUIET = ("no_environment", "no_model")      # nothing is wrong: learning has not got this far on this host yet
 
 
