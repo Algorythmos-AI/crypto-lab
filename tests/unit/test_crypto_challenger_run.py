@@ -36,6 +36,25 @@ def own_locks(tmp_path, monkeypatch):
     monkeypatch.setattr(locks, "LOCK_DIR", tmp_path / "locks")
 
 
+CONFIRMED = {"passed": True, "trades": 40, "mean_r": 0.2, "profit_factor": 1.4, "span": [0, 1], "pairs": ["BTC/USD"],
+             "data_hash": "e"}
+
+
+@pytest.fixture(autouse=True)
+def earlier_history(monkeypatch):
+    """DEC-0021: a challenger that passes gate C1 is confirmed on earlier history. These tests are about the rest
+    of the run, so the confirmation is a stub that passes and counts its calls; the tests of the confirmation
+    itself replace it. Nothing here may reach the exchange."""
+    calls: list[str] = []
+
+    def stub(cfg, dials, start, end, earlier=None):
+        calls.append(rules.challenger_id(dials))
+        return dict(CONFIRMED)
+    monkeypatch.setattr(challengers, "confirmed", stub)
+    monkeypatch.setattr(challengers, "load_history", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
+    return calls
+
+
 def gate_returning(monkeypatch, result: dict, seen: list | None = None, desk=None) -> None:
     def fake(cfg, dials, n_trials, hourly, infos, start, end, controls=3, seed=7):
         if seen is not None:
@@ -360,3 +379,104 @@ def test_the_snapshot_lists_every_challenger_with_its_verdict_and_writes_nothing
     clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply(
         {"challengers": snapshot.ALLOW["challengers"]}, {"challengers": view})
     assert clean["challengers"]["list"][0]["id"] == cid and len(clean["challengers"]["list"]) == 3
+
+
+# ---------------------------------------------------------------- confirmation on earlier history (DEC-0021)
+def _registered(desk, dials=WIDE, now=NOW) -> str:
+    cid = rules.challenger_id(dials)
+    challengers.note(desk, cid, "registered", now, dials=dials, rules=challengers.describe(dials), slot="random",
+                     of=None, week="2020-W01", n_trials=8)
+    return cid
+
+
+def test_a_challenger_that_passes_c1_and_is_not_confirmed_never_trades(crypto, monkeypatch, earlier_history):  # noqa: F811
+    desk, alerts, _ = crypto
+    cid = _registered(desk)
+    gate_returning(monkeypatch, PASS)
+    monkeypatch.setattr(challengers, "draw", lambda *a, **k: [])
+    lost = {**CONFIRMED, "passed": False, "mean_r": -0.1, "profit_factor": 0.8}
+    monkeypatch.setattr(challengers, "confirmed", lambda *a, **k: dict(lost))
+    assert challengers.run(NOW, desk, CFG, MARKET, alerts) == 0
+    rec = challengers.load_state(desk)[cid]
+    assert rec["status"] == "failed" and challengers.UNCONFIRMED in rec["c1"]["failed_on"]
+    assert rec["c1"]["passed"] is False and rec["c1"]["confirm"]["mean_r"] == -0.1
+    events = [r["event"] for r in journal(desk) if r["kind"] == "challenger"]
+    assert events == ["registered", "c1"]                                # judged once, and not admitted
+    # The journal alone gives the same record: a lost cache does not forget why it failed.
+    again = challengers.state_of(journal(desk))[cid]
+    assert again["status"] == "failed" and again["c1"]["confirm"] == rec["c1"]["confirm"]
+    # A later run does not judge it again, and it is still not admitted.
+    monkeypatch.setattr(challengers, "confirmed", lambda *a, **k: dict(CONFIRMED))
+    assert challengers.run(NOW + 86_400, desk, CFG, MARKET, alerts) == 0
+    assert challengers.load_state(desk)[cid]["status"] == "failed"
+
+
+def test_the_earlier_history_is_only_touched_by_a_challenger_that_passed_c1(crypto, monkeypatch, earlier_history):  # noqa: F811
+    desk, alerts, _ = crypto
+    cid = _registered(desk)
+    gate_returning(monkeypatch, FAIL)
+    monkeypatch.setattr(challengers, "draw", lambda *a, **k: [])
+    assert challengers.run(NOW, desk, CFG, MARKET, alerts) == 0
+    assert earlier_history == [] and "confirm" not in [k for k, v in challengers.load_state(desk)[cid]["c1"].items() if v]
+    other = _registered(desk, {**WIDE, "btc_filter": not WIDE.get("btc_filter", False)})
+    gate_returning(monkeypatch, PASS)
+    assert challengers.run(NOW + 86_400, desk, CFG, MARKET, alerts) == 0
+    assert earlier_history == [other]                                    # once, for the one that passed
+    assert challengers.load_state(desk)[other]["status"] == challengers.LIVE
+
+
+def test_without_the_earlier_history_a_challenger_waits_and_is_never_admitted_unconfirmed(crypto, monkeypatch):  # noqa: F811
+    from wt.crypto.data import DataError
+    desk, alerts, box = crypto
+    cid = _registered(desk)
+    gate_returning(monkeypatch, PASS)
+    monkeypatch.setattr(challengers, "draw", lambda *a, **k: [])
+    monkeypatch.setattr(challengers, "confirmed", lambda *a, **k: (_ for _ in ()).throw(DataError("candles: HTTPError")))
+    assert challengers.run(NOW, desk, CFG, MARKET, alerts) == 0
+    assert challengers.load_state(desk)[cid]["status"] == "registered"
+    assert [r["event"] for r in journal(desk) if r["kind"] == "challenger"] == ["registered"]     # no verdict was written
+    assert any("waiting for earlier history" in str(m) for m in box)
+    monkeypatch.setattr(challengers, "confirmed", lambda *a, **k: dict(CONFIRMED))
+    assert challengers.run(NOW + 86_400, desk, CFG, MARKET, alerts) == 0                           # the next run judges it
+    assert challengers.load_state(desk)[cid]["status"] == challengers.LIVE
+
+
+def test_the_confirmation_runs_on_the_span_before_c1s_and_needs_trades_and_a_profit(monkeypatch):
+    seen = {}
+
+    def fake_confirm(cfg, dials, hourly, infos, start, end):
+        seen.update(span=(start, end), pairs=sorted(hourly))
+        return dict(CONFIRMED)
+    monkeypatch.undo()                                                   # the real `confirmed`, with its own stubs
+    monkeypatch.setattr(challengers, "confirm", fake_confirm)
+    hourly, infos = MARKET
+    challengers.confirmed(ONE, WIDE, 1000, 3000, ({**hourly, "ETH/USD": []}, infos))
+    assert seen == {"span": (-1000, 1000), "pairs": ["BTC/USD"]}         # the two "years" before, never C1's own
+    from wt.crypto.data import DataError
+    with pytest.raises(DataError):
+        challengers.confirmed(ONE, WIDE, 1000, 3000, ({"BTC/USD": []}, infos))
+    monkeypatch.undo()
+    # The real run on a thin history: one or two trades are not a confirmation, whatever they made.
+    got = challengers.confirm(ONE, WIDE, hourly, infos, B0, B0 + H4 * 5)
+    assert got["passed"] is False and got["trades"] < challengers.MIN_CONFIRM_TRADES and got["span"] == [B0, B0 + H4 * 5]
+    from wt.crypto import backtest as bt
+    for trades, mean_r, pf, ok in ((15, 0.1, 1.2, True), (14, 0.5, 2.0, False), (40, 0.0, 1.0, False),
+                                   (40, -0.1, 0.9, False), (40, 0.1, None, True), (40, 0.1, 1.0, False)):
+        monkeypatch.setattr(bt, "run", lambda *a, **k: [])
+        monkeypatch.setattr(bt, "summary", lambda *a, t=trades, m=mean_r, p=pf, **k: {"trades": t, "mean_r": m, "profit_factor": p})
+        assert challengers.confirm(ONE, WIDE, hourly, infos, 0, 1)["passed"] is ok, (trades, mean_r, pf)
+
+
+def test_a_failed_fetch_is_tried_again_before_it_costs_a_challenger_a_day():
+    from wt.crypto.data import DataError
+    calls, waits = [], []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise DataError("candles: ConnectionError")
+        return "bars"
+    assert challengers._retried(flaky, waits.append) == "bars" and len(calls) == 3 and waits == [5.0, 10.0]
+    calls.clear()
+    with pytest.raises(DataError):
+        challengers._retried(lambda: (_ for _ in ()).throw(DataError("down")), waits.append)

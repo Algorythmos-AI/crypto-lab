@@ -42,14 +42,18 @@ from wt.core.config import ROOT, load_yaml
 from wt.core.desk import DESKS, Desk
 from wt.crypto import risk, rules
 from wt.crypto.book import write_atomic
-from wt.crypto.data import Bar, PairInfo
+from wt.crypto.data import Bar, DataError, PairInfo
 from wt.ops.locks import job_lock
 
 DAY = 86_400
 CYCLE_JOB = "crypto"
 LOCK_WAIT_S = 600.0                     # a bar cycle is killed at 300 s
 CONTROLS, SEED = 100, 7                 # the random-entry control, as EXP-0016 ran it
+MIN_CONFIRM_TRADES = 15                 # DEC-0021: closed trades on the earlier span for a confirmation to count
+UNCONFIRMED = "not_confirmed_on_earlier_history"
 LIVE, RETIRED = "live", "retired"
+C1_KEYS = ("passed", "failed_on", "base", "stressed", "control_p", "control_mean_r", "span", "data_hash", "n_trials", "t",
+           "confirm")
 OFF_CODE, RETIRED_CODE = "learning_off", "retired"
 
 
@@ -147,8 +151,7 @@ def state_of(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         elif cid not in out:
             continue                                        # a result with no registration is not a challenger
         elif event == "c1" and "c1" not in out[cid]:
-            out[cid]["c1"] = {k: r.get(k) for k in ("passed", "failed_on", "base", "stressed", "control_p",
-                                                    "control_mean_r", "span", "data_hash", "n_trials", "t")}
+            out[cid]["c1"] = {k: r.get(k) for k in C1_KEYS}
             out[cid]["status"] = "passed" if r.get("passed") else "failed"
         elif event == "admitted" and out[cid]["status"] == "passed":
             out[cid].update(status=LIVE, admitted=r.get("t"))
@@ -322,6 +325,34 @@ def gate(cfg: dict[str, Any], dials: dict[str, Any], n_trials: int, hourly: dict
             "span": [start, end], "n_trials": n_trials, "controls": controls, "seed": seed}
 
 
+def confirm(cfg: dict[str, Any], dials: dict[str, Any], hourly: dict[str, list[Bar]], infos: dict[str, PairInfo],
+            start: int, end: int) -> dict[str, Any]:
+    """DEC-0021: a challenger that passed gate C1, run once on history it was not chosen on. Confirmed when it
+    closed enough trades there and made money after costs: the same sign on other data, not a second
+    significance test."""
+    from wt.crypto import backtest
+    spec = rules.challenger(cfg, dials)
+    rows = backtest.run(cfg, hourly, infos, start, end, specs={spec.name: spec})
+    s = backtest.summary(rows, spec.name, start, end, 1, float(cfg["sleeves"]["common"]["start_equity"]))
+    trades, mean_r, pf = int(s["trades"]), s.get("mean_r"), s.get("profit_factor")
+    made_money = mean_r is not None and mean_r > 0 and (pf is None or pf > 1)       # None: no losing trade at all
+    return {"passed": bool(trades >= MIN_CONFIRM_TRADES and made_money), "trades": trades, "mean_r": mean_r,
+            "profit_factor": pf, "span": [start, end], "pairs": sorted(k for k, v in hourly.items() if v),
+            "data_hash": data_hash(hourly)}
+
+
+def confirmed(cfg: dict[str, Any], dials: dict[str, Any], start: int, end: int,
+              earlier: tuple[dict[str, list[Bar]], dict[str, PairInfo]] | None = None) -> dict[str, Any]:
+    """The confirmation on the two years before [start, end): the span of gate C1 is never part of it. The
+    history is fetched once and then read from the cache. A DataError is the caller's: no verdict without it."""
+    span = end - start
+    hourly, infos = earlier or load_history(cfg, start - span, start)
+    hourly = {k: v for k, v in hourly.items() if v}        # a pair the exchange did not list then has no bars
+    if not hourly:
+        raise DataError("no earlier history for any traded pair")
+    return confirm(cfg, dials, hourly, infos, start - span, start)
+
+
 def data_hash(hourly: dict[str, list[Bar]]) -> str:
     h = hashlib.sha256()
     for name in sorted(hourly):
@@ -337,8 +368,25 @@ def load_history(cfg: dict[str, Any], start: int, end: int) -> tuple[dict[str, l
     from wt.crypto.data import CoinbasePublic, KrakenPublic
     pairs: dict[str, str] = dict(cfg["sleeves"]["common"]["pairs"])
     client = CoinbasePublic()
-    hourly = {n: history.load_hourly(n, start - history.WARMUP_D * DAY, end, client) for n in pairs}
-    return hourly, KrakenPublic().pair_infos(list(pairs.values()))
+    hourly = {n: _retried(lambda n=n: history.load_hourly(n, start - history.WARMUP_D * DAY, end, client)) for n in pairs}
+    return hourly, _retried(lambda: KrakenPublic().pair_infos(list(pairs.values())))
+
+
+FETCH_TRIES, FETCH_PAUSE_S = 3, 5.0
+
+
+def _retried(fetch: Any, sleep: Any = None) -> Any:
+    """A public endpoint has bad minutes: one failed call must not cost a challenger a day. The last error is
+    the caller's."""
+    import time
+    for attempt in range(FETCH_TRIES):
+        try:
+            return fetch()
+        except DataError:
+            if attempt == FETCH_TRIES - 1:
+                raise
+            (sleep or time.sleep)(FETCH_PAUSE_S * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 # ---- retirement ----
@@ -389,7 +437,8 @@ def equity_of(desk: Desk, cfg: dict[str, Any], cid: str) -> float:
 
 def run(now: float | None = None, desk: Desk | None = None, cfg: dict[str, Any] | None = None,
         market: tuple[dict[str, list[Bar]], dict[str, PairInfo]] | None = None, alerts: Any = None,
-        controls: int = CONTROLS) -> int:
+        controls: int = CONTROLS,
+        earlier: tuple[dict[str, list[Bar]], dict[str, PairInfo]] | None = None) -> int:
     from wt.ops.alerts import Alerts
     from wt.research.trials import family_trial_count
     now = dt.datetime.now(dt.UTC).timestamp() if now is None else now
@@ -451,13 +500,25 @@ def run(now: float | None = None, desk: Desk | None = None, cfg: dict[str, Any] 
         for cid in todo:
             rec = state[cid]
             res = {**gate(cfg, rec["dials"], int(rec["n_trials"]), hourly, infos, start, end, controls), "data_hash": digest}
+            if res["passed"]:
+                # DEC-0021: passing C1 earns one run on earlier history, and only that run can admit it.
+                try:
+                    res["confirm"] = confirmed(cfg, rec["dials"], start, end, earlier)
+                except (DataError, OSError) as e:
+                    # No verdict is written: it stays registered and a later run judges it from the start.
+                    print(f"gate C1 {cid}: passed, but the earlier history could not be loaded ({str(e)[:80]}); not judged yet")
+                    alerts.once_per_day("crypto:challenger-unconfirmed", "Crypto: a challenger is waiting for earlier history",
+                                        "It passed gate C1 and could not be confirmed. It is not admitted; the next run tries again.", 3)
+                    continue
+                if not res["confirm"]["passed"]:
+                    res.update(passed=False, failed_on=[*res["failed_on"], UNCONFIRMED])
             row = note(desk, cid, "c1", now, **res)
-            rec["c1"] = {k: row.get(k) for k in ("passed", "failed_on", "base", "stressed", "control_p",
-                                                 "control_mean_r", "span", "data_hash", "n_trials", "t")}
+            rec["c1"] = {k: row.get(k) for k in C1_KEYS}
             rec["status"] = "passed" if res["passed"] else "failed"
-            b = res["base"]
+            b, conf = res["base"], res.get("confirm")
             print(f"gate C1 {cid}: {'PASSED' if res['passed'] else 'failed on ' + ', '.join(res['failed_on'])} "
-                  f"({b.get('trades')} trades, mean R {b.get('mean_r')})")
+                  f"({b.get('trades')} trades, mean R {b.get('mean_r')}"
+                  + ("" if conf is None else f"; earlier history: {conf['trades']} trades, mean R {conf['mean_r']}") + ")")
             save_state(desk, state, now)
 
     # 6. Admission, up to the cap.
