@@ -92,7 +92,8 @@ ALLOW: dict[str, Any] = {
                               "n_trials": I, "trades": I, "trades_per_month": N, "win_rate": N, "mean_r": N,
                               "ci_low": N, "ci_high": N, "profit_factor": N, "dsr": N, "control_p": N,
                               "max_drawdown_pct": N, "failed_on": [S], "admitted": S, "retired": S,
-                              "retired_why": S}]},
+                              "retired_why": S, "confirm_passed": B, "confirm_trades": I, "confirm_mean_r": N,
+                              "confirm_profit_factor": N}]},
     # ---- limits across the tournament's books together (DEC-0019); the baseline is outside them ----
     "desk": {"one_position_per_coin": B, "max_open_risk_pct": N, "books": I, "positions": I, "coins": [S], "equity": N,
              "open_risk": N, "open_risk_pct": N, "refused_coin": I, "refused_risk": I, "refused_coin_7d": I,
@@ -390,6 +391,7 @@ def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]
     for rec in reversed(list(state.values())):
         c1 = rec.get("c1") or {}
         base, hard, gone = c1.get("base") or {}, c1.get("stressed") or {}, rec.get("retired") or {}
+        conf = c1.get("confirm") or {}                      # DEC-0021: the same rules on the two years before
         out.append({"id": rec["id"], "rules": rec.get("rules"), "slot": rec.get("slot"), "of": rec.get("of"),
                     "week": rec.get("week"), "registered": rec.get("registered"), "status": rec.get("status"),
                     "n_trials": rec.get("n_trials"), "trades": base.get("trades"),
@@ -397,7 +399,9 @@ def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]
                     "mean_r": base.get("mean_r"), "ci_low": hard.get("ci_low"), "ci_high": hard.get("ci_high"),
                     "profit_factor": base.get("profit_factor"), "dsr": base.get("dsr"), "control_p": c1.get("control_p"),
                     "max_drawdown_pct": base.get("max_drawdown_pct"), "failed_on": c1.get("failed_on") or [],
-                    "admitted": rec.get("admitted"), "retired": gone.get("t"), "retired_why": gone.get("why")})
+                    "admitted": rec.get("admitted"), "retired": gone.get("t"), "retired_why": gone.get("why"),
+                    "confirm_passed": conf.get("passed"), "confirm_trades": conf.get("trades"),
+                    "confirm_mean_r": conf.get("mean_r"), "confirm_profit_factor": conf.get("profit_factor")})
 
     def count(status: str) -> int:
         return sum(1 for r in state.values() if r.get("status") == status)

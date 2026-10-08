@@ -199,7 +199,8 @@ def challengers_fixture(journal: Path, end: int) -> None:
               "stressed": {"mean_r": -0.131, "ci_low": -0.262, "ci_high": 0.018}, "control_p": 0.41}),
             (base, "neighbour", "break", 9,
              {"passed": True, "failed_on": [], "base": figures,
-              "stressed": {"mean_r": 0.198, "ci_low": 0.019, "ci_high": 0.389}, "control_p": 0.01}),
+              "stressed": {"mean_r": 0.198, "ci_low": 0.019, "ci_high": 0.389}, "control_p": 0.01,
+              "confirm": {"passed": True, "trades": 88, "mean_r": 0.131, "profit_factor": 1.22}}),
             ({**base, "base": "dip", "stop_atr": 4.0, "target_atr": 8.0}, "random", None, 10, None)]
     for k, (dials, slot, of, n_trials, c1) in enumerate(plan):
         d = rules.canonical(dials)

@@ -372,6 +372,13 @@ def test_the_snapshot_lists_every_challenger_with_its_verdict_and_writes_nothing
     assert (newest["id"], newest["status"], newest["trades"], newest["failed_on"]) == (cid, "registered", None, [])
     assert older["status"] == "failed" and older["failed_on"] == ["too_few_trades"] and older["mean_r"] == -0.4
     assert older["ci_low"] == 0.05 and older["control_p"] == 0.01 and older["rules"]
+    assert (older["confirm_passed"], older["confirm_trades"]) == (None, None)   # it failed gate C1: never run on earlier history
+    challengers.note(d, "ch-conf", "registered", NOW, dials=WIDE, rules="r", slot="random", of=None, week=WEEK, n_trials=11)
+    challengers.note(d, "ch-conf", "c1", NOW, passed=False, failed_on=[challengers.UNCONFIRMED], base={"trades": 40, "mean_r": 0.3},
+                     confirm={"passed": False, "trades": 22, "mean_r": -0.12, "profit_factor": 0.8})
+    conf = snapshot.challengers_view(d, CFG, journal(d), now)["list"][0]
+    assert (conf["id"], conf["status"], conf["confirm_passed"], conf["confirm_trades"], conf["confirm_mean_r"],
+            conf["confirm_profit_factor"]) == ("ch-conf", "failed", False, 22, -0.12, 0.8)
     risk.learning_file(d).write_text("off\n")
     assert snapshot.challengers_view(d, CFG, journal(d), now)["learning"] == "off"
     assert snapshot.challengers_view(d, {**CFG, "learning": {}}, journal(d), now) is None
