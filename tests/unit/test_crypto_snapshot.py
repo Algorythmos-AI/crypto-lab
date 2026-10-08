@@ -126,3 +126,16 @@ def test_the_publish_job_shows_its_previous_finished_run_not_itself_running():
     last = {"crypto": cycle_run, "dashboard-crypto": running}
     assert snapshot._last_jobs(last, [done, cycle_run]) == {"crypto": cycle_run, "dashboard-crypto": done}
     assert snapshot._last_jobs(last, [cycle_run]) == {"crypto": cycle_run}             # the very first publish
+
+
+def test_equity_marks_are_thinned_to_one_per_four_hours_and_the_newest_is_always_kept():
+    marks = [(f"2026-10-01T{h:02d}:{m:02d}:10+00:00", 10_000.0 + h * 10 + m) for h in range(0, 10) for m in (0, 15, 30, 45)]
+    got = snapshot.thinned(list(reversed(marks)))                # the order they arrive in does not matter
+    assert got == [{"t": "2026-10-01T03:00:00+00:00", "equity": 10_075.0}, {"t": "2026-10-01T07:00:00+00:00", "equity": 10_115.0},
+                   {"t": "2026-10-01T09:00:00+00:00", "equity": 10_135.0}]
+    assert snapshot.thinned([]) == [] and snapshot.thinned([("not a time", 1.0)]) == []
+    # 90 days of a book marked every 15 minutes stays small: at most six points a day.
+    long = [(f"2026-{mo:02d}-{d:02d}T{h:02d}:00:00+00:00", 1.0) for mo in (7, 8, 9) for d in range(1, 31) for h in range(24)]
+    assert len(snapshot.thinned(long)) == 90 * 24 // snapshot.CURVE_STEP_H and snapshot.CURVE_DAYS == 90
+    assert len(json.dumps(snapshot.thinned(long))) * 8 < publish.BUDGET        # eight books' curves fit the budget
+

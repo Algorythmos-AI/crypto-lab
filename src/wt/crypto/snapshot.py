@@ -36,7 +36,8 @@ SCHEMA_PATH = ROOT / "dashboard" / "src" / "lib" / "crypto.schema.json"
 OUT = STATE_DIR / "dashboard-crypto"
 WINDOW_AHEAD_D = 14                     # the off-host watchdog pages while `now` is inside the published window
 OBS_DAYS = 7
-CURVE_DAYS = 30
+CURVE_DAYS = 90
+CURVE_STEP_H = 4                        # one mark is kept per book for each block of this many hours
 
 POSITION = {"pair": S, "qty": N, "entry_price": N, "stop": N, "target": N, "entry_time": S, "mark": N,
             "unrealised_pct": N}
@@ -179,6 +180,20 @@ def observations(desk: Desk, now: dt.datetime, days: int | None = OBS_DAYS) -> l
     return sorted(seen.values(), key=lambda r: (r["t"], r["pair"]))
 
 
+def thinned(marks: list[tuple[str, float]], step_h: int = CURVE_STEP_H) -> list[dict[str, Any]]:
+    """A book's equity marks, thinned so that 90 days fit the snapshot: the last mark of each block of `step_h`
+    hours (UTC), dated by the hour it was taken in. The newest mark is therefore always the last point."""
+    last: dict[str, tuple[str, float]] = {}
+    for t, equity in sorted(marks):
+        hour = t[:13]
+        try:
+            block = f"{hour[:11]}{int(hour[11:13]) // step_h * step_h:02d}"
+        except ValueError:
+            continue
+        last[block] = (hour, equity)
+    return [{"t": hour + ":00:00+00:00", "equity": equity} for _, (hour, equity) in sorted(last.items())]
+
+
 def histogram(values: list[float], bins: int = 12) -> list[dict[str, Any]]:
     if len(values) < 2:
         return []
@@ -230,10 +245,8 @@ def performance(journal: list[dict[str, Any]], now: dt.datetime) -> dict[str, An
         if isinstance(r.get("r"), int | float):
             d["rs"].append(r["r"])
     cutoff = (now - dt.timedelta(days=CURVE_DAYS)).isoformat()
-    hourly: dict[str, float] = {}
-    for r in journal:
-        if r.get("kind") == "cycle" and str(r.get("t", "")) >= cutoff and (e := _f(r.get("equity"))) is not None:
-            hourly[str(r["t"])[:13]] = e                           # the last cycle of each hour
+    marks = [(str(r["t"]), e) for r in journal
+             if r.get("kind") == "cycle" and str(r.get("t", "")) >= cutoff and (e := _f(r.get("equity"))) is not None]
     wins = sum(x > 0 for x in pnl)
     return {"trades": len(exits), "wins": wins, "losses": len(pnl) - wins,
             "win_rate": wins / len(pnl) if pnl else None, "mean_r": statistics.fmean(rs) if rs else None,
@@ -242,7 +255,7 @@ def performance(journal: list[dict[str, Any]], now: dt.datetime) -> dict[str, An
             "by_reason": dict(Counter(str(r.get("reason")) for r in exits)),
             "by_pair": {k: {"trades": d["trades"], "mean_r": statistics.fmean(d["rs"]) if d["rs"] else None,
                             "pnl": d["pnl"]} for k, d in by_pair.items()},
-            "equity_curve": [{"t": k + ":00:00+00:00", "equity": v} for k, v in sorted(hourly.items())],
+            "equity_curve": thinned(marks),
             "recent": [{"t": r.get("t"), "pair": r.get("pair"), "reason": r.get("reason"), "r": r.get("r"),
                         "pnl": _f(r.get("pnl")), "held_min": round(r["held_s"] / 60, 1) if "held_s" in r else None}
                        for r in exits[-20:]][::-1]}
@@ -358,9 +371,9 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
                 "unrealised_pct": (float(mark[0]) / float(held.entry_price) - 1) * 100 if mark else None,
                 "unrealised_r": open_ / float(held.unit) if open_ is not None and held.unit > 0 else None})
         last_eval = next((r for r in reversed(mine) if r.get("kind") == "sleeve" and r.get("pairs")), None)
-        curve = {str(r["t"])[:13]: e for r in mine if r.get("kind") == "sleeve" and str(r.get("t", "")) >= cutoff
-                 and (e := _f(r.get("equity"))) is not None}
-        curve[now.isoformat()[:13]] = equity
+        curve = [(str(r["t"]), e) for r in mine if r.get("kind") == "sleeve" and str(r.get("t", "")) >= cutoff
+                 and (e := _f(r.get("equity"))) is not None]
+        curve.append((now.isoformat(), equity))
         opens: list[float] = [float(x["unrealised"]) for x in positions if x["unrealised"] is not None]
 
         def total(since: str, pnl: list[tuple[str, float]] = pnl) -> tuple[float, int]:
@@ -391,7 +404,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
             "why_not": [{"pair": pair, "bar": _iso(v["bar"]) if isinstance(v.get("bar"), int) else None,
                          "fire": bool(v.get("fire")), "why": v.get("why") or []}
                         for pair, v in ((last_eval or {}).get("pairs") or {}).items() if isinstance(v, dict)],
-            "equity_curve": [{"t": k + ":00:00+00:00", "equity": v} for k, v in sorted(curve.items())]})
+            "equity_curve": thinned(curve)})
     return out
 
 
