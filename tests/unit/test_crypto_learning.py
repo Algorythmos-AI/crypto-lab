@@ -517,7 +517,11 @@ def test_the_snapshot_says_what_was_trained_what_is_in_force_and_how_its_picks_d
     empty = snapshot.learning_view(d, CFG, [])
     assert empty == {"switch": "on", "lineages_started": 0, "model": None, "training": None,
                      "signals": {"recorded": 0, "finished": 0, "open": 0, "win_rate": None, "mean_r": None, "scored": 0,
-                                 "kept": 0, "kept_mean_r": None, "skipped": 0, "skipped_mean_r": None}}
+                                 "kept": 0, "kept_mean_r": None, "skipped": 0, "skipped_mean_r": None},
+                     "limits": {"drift_psi": 0.25, "drift_inputs": 3, "max_model_age_days": 14, "demotion_window_signals": 120,
+                                "alpha": 0.05, "cutoff_percentile": 40, "half_size_below_percentile": 60},
+                     "scores": None, "series": [], "events": [], "lineages": [], "registry": [],
+                     "planned": ["forecaster", "m3", "regime"]}
     assert snapshot.learning_view(d, {**CFG, "learning": {}}, []) is None
     point(d)
     rows = signals_with_outcomes(60, False) + [{"kind": "signal", "sid": "open", "sleeve": "trend", "lineage": LINEAGE, "score": 0.9}]
@@ -539,6 +543,31 @@ def test_the_snapshot_says_what_was_trained_what_is_in_force_and_how_its_picks_d
     assert t["leans_on"] == [{"input": "rsi", "weight": 0.4}, {"input": "volume_ratio", "weight": 0.2}]
     g = view["signals"]
     assert (g["recorded"], g["finished"], g["open"], g["scored"]) == (61, 60, 1, 60) and g["kept"] + g["skipped"] == 60
+    # What the host already keeps and the page now draws: the model's card, its scores, and its history.
+    assert m["since"] and m["drift_psi"] == {} and m["leans_on"] == [] and m["by_sleeve"] == {}
+    assert snapshot.learning_view(d, CFG, rows, dt.datetime.fromisoformat(m["trained_at"]) + dt.timedelta(days=3))["model"]["age_days"] == 3.0
+    bins = view["scores"]["bins"]
+    assert sum(b["kept"] + b["halved"] + b["skipped"] for b in bins) == 61          # the open signal is scored too
+    assert all(0 <= b["lo"] < b["hi"] <= 1 for b in bins) and [b["lo"] for b in bins] == sorted(b["lo"] for b in bins)
+    series = view["series"]
+    assert len(series) == 60 and series[-1]["n"] == 60 and [x["t"] for x in series] == sorted(x["t"] for x in series)
+    assert round(series[-1]["kept"] + series[-1]["skipped"], 3) == round(sum(r["r"] for r in rows if r.get("kind") == "outcome"), 3)
+    assert view["lineages"] == [{"lineage": LINEAGE, "state": "shadow", "checkpoints": 1, "finished": 60,
+                                 "since": m["since"], "in_force": True}]
+    assert [(x["version"], x["in_force"]) for x in view["registry"]] == [("m1-a", True)]
+    assert view["planned"] == ["forecaster", "m3", "regime"]
+    assert (t["start"], t["end"], t["data_hash"], t["models"][1]["log_loss_se"]) == (None, None, None, None)
+    journalled = rows + [{"kind": "model", "event": "checkpoint", "t": iso(NOW), "model": "m1-a", "lineage": LINEAGE}]
+    assert snapshot.learning_view(d, CFG, journalled)["events"] == [{"t": iso(NOW), "event": "checkpoint", "lineage": LINEAGE, "version": "m1-a"}]
+    card_file = promotion.models_dir(d) / "m1-a" / "card.json"
+    card_file.write_text(json.dumps({**json.loads(card_file.read_text()), "kind": "logistic", "lineage": LINEAGE,
+                                     "trained_at": iso(NOW), "examples": 9000, "by_sleeve": {"trend": {"n": 5, "mean_r": 0.1}},
+                                     "importance": [{"input": f"x{k}", "weight": 0.1} for k in range(12)]}))
+    carded = snapshot.learning_view(d, CFG, rows)
+    assert len(carded["model"]["leans_on"]) == 12 and carded["model"]["by_sleeve"] == {"trend": {"n": 5, "mean_r": 0.1}}
+    assert carded["registry"] == [{"version": "m1-a", "kind": "logistic", "lineage": LINEAGE, "trained_at": iso(NOW),
+                                   "examples": 9000, "in_force": True}]
+    view = carded
     risk.learning_file(d).write_text("off\n")
     assert snapshot.learning_view(d, CFG, rows)["switch"] == "off"
     # The whole section passes the published contract, and nothing was written by reading it.
@@ -573,3 +602,10 @@ def test_the_snapshot_shows_the_desk_wide_limits_and_how_much_of_them_is_in_use(
     assert (view["one_position_per_coin"], view["max_open_risk_pct"]) == (True, 3.0)
     clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply({"desk": snapshot.ALLOW["desk"]}, {"desk": view})
     assert clean["desk"]["coins"] == ["BTC/USD"]
+
+
+def test_the_models_the_page_calls_planned_are_the_ones_the_trainer_does_not_fit():
+    """The trading side may not import the trainer, so the list is kept twice and compared here as text."""
+    from wt.crypto import snapshot
+    source = (Path(snapshot.__file__).parents[1] / "ml" / "train.py").read_text()
+    assert f"ORDER = {json.dumps(list(snapshot.BUILT_MODELS)).replace('[', '(').replace(']', ')')}" in source

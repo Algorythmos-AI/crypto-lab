@@ -151,10 +151,25 @@ def learning_fixture(state: Path, journal: Path, end: int) -> None:
     models.mkdir(parents=True, exist_ok=True)
     lineage, version = "m1:C=0.1", "m1-20260925-fixture0"
     (models / "current.json").write_text(json.dumps({"version": version, "lineage": lineage, "kind": "logistic",
-                                                     "trained_at": _iso(end - 7 * 86_400), "inputs": [], "sha256": "",
-                                                     "cutoff": 0.31, "half_below": 0.36}))
+                                                     "trained_at": _iso(end - 7 * 86_400),
+                                                     "inputs": ["btc_above_sma50", "stop_pct", "volume_ratio"],
+                                                     "sha256": "f1x7ure0" * 8, "features": "fixture00001",
+                                                     "calibration": [0.94, -0.03], "cutoff": 0.31, "half_below": 0.36}))
+    importance = [{"input": "btc_above_sma50", "weight": 0.31}, {"input": "stop_pct", "weight": -0.22},
+                  {"input": "volume_ratio", "weight": 0.12}, {"input": "rsi", "weight": -0.07},
+                  {"input": "is_trend", "weight": 0.05}, {"input": "hour_utc", "weight": 0.01}]
+    for v, when, n in ((version, end - 7 * 86_400, 8873), ("m2-20260918-fixture9", end - 14 * 86_400, 8790)):
+        (models / v).mkdir(exist_ok=True)
+        (models / v / "card.json").write_text(json.dumps({
+            "version": v, "kind": "logistic" if v == version else "lightgbm", "trained_at": _iso(when), "examples": n,
+            "lineage": lineage if v == version else "m2:n_estimators=100,num_leaves=4", "importance": importance,
+            "by_sleeve": {"trend": {"n": 4102, "mean_r": -0.071}, "break": {"n": 3644, "mean_r": -0.118},
+                          "dip": {"n": 1127, "mean_r": -0.102}}}))
     (models / "promotion.json").write_text(json.dumps({
         "lineage": lineage, "version": version, "state": "shadow", "checkpoints": 1, "finished": 74, "next_checkpoint": 120,
+        "since": _iso(end - 7 * 86_400),
+        "past": {"m2:n_estimators=100,num_leaves=4": {"state": "shadow", "checkpoints": 0, "finished": 12,
+                                                      "since": _iso(end - 14 * 86_400)}},
         "drift": {"score_psi": 0.062, "inputs": {}, "drifted": False},
         "looks": [{"checkpoint": 1, "signals": 60, "spread": 0.142, "lower": -0.318, "alpha": 0.05 / 6, "brier": 0.2231,
                    "brier_base": 0.2254, "passed": False, "t": _iso(end - 2 * 86_400)}]}))
@@ -162,7 +177,8 @@ def learning_fixture(state: Path, journal: Path, end: int) -> None:
             "dropped_mean_r": None, "spread": None, "spread_ci": None}
     (models / "last_train.json").write_text(json.dumps({
         "t": _iso(end - 7 * 86_400), "chosen": "m1", "decision": "DEC-0018", "examples": 8873, "pairs": 30, "effective_n": 2005.8,
-        "win_rate": 0.344, "mean_r": -0.094, "attempt": 3, "m0": fold,
+        "win_rate": 0.344, "mean_r": -0.094, "attempt": 3, "m0": fold, "start": end - 737 * 86_400, "end": end - 7 * 86_400,
+        "data_hash": "fixture0c0ffee00",
         "best": {"m1": {**fold, "settings": {"C": 0.1}, "log_loss": 0.5868, "kept": 4313, "kept_mean_r": -0.103, "dropped": 3095,
                         "dropped_mean_r": -0.207, "spread": 0.104, "spread_ci": [-0.113, 0.32]},
                  "m2": {**fold, "settings": {"n_estimators": 300, "num_leaves": 4}, "log_loss": 0.6077, "kept": 4666,
@@ -170,6 +186,9 @@ def learning_fixture(state: Path, journal: Path, end: int) -> None:
                         "spread_ci": [-0.346, 0.128]}},
         "importance": [{"input": "btc_above_sma50", "weight": 0.31}, {"input": "stop_pct", "weight": -0.22},
                        {"input": "volume_ratio", "weight": 0.12}]}))
+    for k, (event, when) in enumerate((("lineage", end - 7 * 86_400), ("checkpoint", end - 2 * 86_400))):
+        ledger.append(journal, {"id": f"model{k}", "kind": "model", "event": event, "t": _iso(when), "model": version,
+                                "lineage": lineage})
     plan = [("trend", "AVAX/USD", 0.42, 1.9), ("break", "AVAX/USD", 0.38, 2.0), ("trend", "ADA/USD", 0.27, -1.0),
             ("break", "SOL/USD", 0.33, -1.0), ("dip", "LINK/USD", 0.24, 0.6), ("trend", "XRP/USD", 0.44, None)]
     for k, (sleeve, pair, score, r) in enumerate(plan):

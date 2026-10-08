@@ -104,16 +104,33 @@ ALLOW: dict[str, Any] = {
                            "checkpoint_signals": I, "finished": I, "next_checkpoint": I, "score_psi": N, "drifted": B,
                            "drift_inputs": [S],
                            "looks": [{"checkpoint": I, "signals": I, "spread": N, "lower": N, "brier": N,
-                                      "brier_base": N, "passed": B, "t": S}]},
+                                      "brier_base": N, "passed": B, "t": S}],
+                           # the model's card: what it is, what it was trained on, and its numbers for acting
+                           "kind": S, "sha": S, "features": S, "inputs": I, "cutoff": N, "half_below": N, "calib_a": N,
+                           "calib_b": N, "age_days": N, "since": S, "drift_psi": Map(N),
+                           "by_sleeve": Map({"n": I, "mean_r": N}), "leans_on": [{"input": S, "weight": N}]},
                  "training": {"t": S, "chosen": S, "decision": S, "examples": I, "pairs": I, "effective_n": N,
-                              "win_rate": N, "mean_r": N, "attempt": I,
-                              "models": [{"name": S, "settings": S, "log_loss": N, "kept": I, "kept_mean_r": N,
-                                          "dropped": I, "dropped_mean_r": N, "spread": N, "ci_low": N, "ci_high": N}],
+                              "win_rate": N, "mean_r": N, "attempt": I, "start": S, "end": S, "data_hash": S,
+                              "models": [{"name": S, "settings": S, "log_loss": N, "log_loss_se": N, "kept": I,
+                                          "kept_mean_r": N, "dropped": I, "dropped_mean_r": N, "spread": N, "ci_low": N,
+                                          "ci_high": N}],
                               "leans_on": [{"input": S, "weight": N}]},
                  "signals": {"recorded": I, "finished": I, "open": I, "win_rate": N, "mean_r": N, "scored": I,
-                             "kept": I, "kept_mean_r": N, "skipped": I, "skipped_mean_r": N}},
+                             "kept": I, "kept_mean_r": N, "skipped": I, "skipped_mean_r": N},
+                 # ---- everything else the host already keeps about the model, published as it is ----
+                 "limits": {"drift_psi": N, "drift_inputs": I, "max_model_age_days": N, "demotion_window_signals": I,
+                            "alpha": N, "cutoff_percentile": N, "half_size_below_percentile": N},
+                 "scores": {"cutoff": N, "half_below": N,
+                            "bins": [{"lo": N, "hi": N, "kept": I, "halved": I, "skipped": I}]},
+                 "series": [{"t": S, "n": I, "kept": N, "skipped": N}],
+                 "events": [{"t": S, "event": S, "lineage": S, "version": S}],
+                 "lineages": [{"lineage": S, "state": S, "checkpoints": I, "finished": I, "since": S, "in_force": B}],
+                 "registry": [{"version": S, "kind": S, "lineage": S, "trained_at": S, "examples": I, "in_force": B}],
+                 "planned": [S]},
 }
 HISTOGRAMS = ("rsi", "atr_pct", "vwap_distance_pct", "volume_ratio")
+BUILT_MODELS = ("m1", "m2")             # the kinds `wt.ml.train` fits; the config names more, which are plans
+SCORE_BINS, SERIES_POINTS, MODEL_EVENTS, REGISTRY_ROWS = 20, 300, 100, 50
 
 
 def to_schema() -> dict[str, Any]:
@@ -452,7 +469,8 @@ def _json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def learning_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+def learning_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]],
+                  now: dt.datetime | None = None) -> dict[str, Any] | None:
     """The model as the owner reads it: the last training's comparison, the model in force with the checkpoints it
     has faced, and what the recorded signals say. None when the config has no learning section."""
     from wt.crypto import promotion
@@ -461,30 +479,45 @@ def learning_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -
         return None
     models = promotion.models_dir(desk)
     p, state, last = promotion.pointer(desk), promotion.load_state(desk), _json(models / "last_train.json")
+    now = now or dt.datetime.now(dt.UTC)
+    raw = _json(models / "current.json")
     model = None
     if p is not None:
         mine = state if state.get("lineage") == p.lineage else {}
         d = mine.get("drift") or {}
+        card = promotion.card(desk, p.version)
+        cal = raw.get("calibration")
+        cal = cal if isinstance(cal, list) and len(cal) == 2 else [None, None]
         model = {"version": p.version, "lineage": p.lineage, "state": mine.get("state") or "shadow", "trained_at": p.trained_at,
                  "checkpoints": mine.get("checkpoints", 0), "max_checkpoints": int(lg["promotion"]["max_checkpoints"]),
                  "checkpoint_signals": int(lg["promotion"]["checkpoint_signals"]), "finished": mine.get("finished", 0),
                  "next_checkpoint": mine.get("next_checkpoint"), "score_psi": d.get("score_psi"), "drifted": d.get("drifted"),
                  "drift_inputs": sorted(d.get("inputs") or {}),
                  "looks": [{k: look.get(k) for k in ("checkpoint", "signals", "spread", "lower", "brier", "brier_base", "passed", "t")}
-                           for look in (mine.get("looks") or [])[-6:]]}
+                           for look in (mine.get("looks") or [])[-6:]],
+                 "kind": raw.get("kind"), "sha": str(raw.get("sha256") or "")[:12] or None,
+                 "features": raw.get("features") or None,
+                 "inputs": len(raw["inputs"]) if isinstance(raw.get("inputs"), list) and raw["inputs"] else None,
+                 "cutoff": raw.get("cutoff"), "half_below": raw.get("half_below"), "calib_a": cal[0], "calib_b": cal[1],
+                 "age_days": _age_days(p.trained_at, now), "since": mine.get("since"),
+                 "drift_psi": {str(k): v for k, v in (d.get("inputs") or {}).items()},
+                 "by_sleeve": {str(k): {"n": v.get("n"), "mean_r": v.get("mean_r")}
+                               for k, v in (card.get("by_sleeve") or {}).items() if isinstance(v, dict)},
+                 "leans_on": _leans(card.get("importance"))}
     training = None
     if last:
         def line(name: str, d: dict[str, Any]) -> dict[str, Any]:
             ci = d.get("spread_ci") or [None, None]
             return {"name": name, "settings": ", ".join(f"{k}={v}" for k, v in sorted((d.get("settings") or {}).items())) or None,
-                    "log_loss": d.get("log_loss"), "kept": d.get("kept"), "kept_mean_r": d.get("kept_mean_r"),
+                    "log_loss": d.get("log_loss"), "log_loss_se": d.get("log_loss_se"), "kept": d.get("kept"),
+                    "kept_mean_r": d.get("kept_mean_r"),
                     "dropped": d.get("dropped"), "dropped_mean_r": d.get("dropped_mean_r"), "spread": d.get("spread"),
                     "ci_low": ci[0], "ci_high": ci[1]}
         training = {**{k: last.get(k) for k in ("t", "chosen", "decision", "examples", "pairs", "effective_n", "win_rate",
-                                               "mean_r", "attempt")},
+                                               "mean_r", "attempt", "data_hash")},
+                    "start": _when(last.get("start")), "end": _when(last.get("end")),
                     "models": [line("m0", last.get("m0") or {}), *(line(k, v) for k, v in sorted((last.get("best") or {}).items()))],
-                    "leans_on": [{"input": d.get("input"), "weight": d.get("weight", d.get("gain_share"))}
-                                 for d in (last.get("importance") or [])[:8] if isinstance(d, dict)]}
+                    "leans_on": _leans(last.get("importance"))[:8]}
     recorded = {r.get("sid"): r for r in rows if r.get("kind") == "signal"}
     done = {r.get("sid"): r for r in rows if r.get("kind") == "outcome" and r.get("sid") in recorded and _f(r.get("r")) is not None}
     rs = [float(o["r"]) for o in done.values()]
@@ -494,13 +527,99 @@ def learning_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -
     skipped = [r for s, r in scored if float(s["score"]) < float(s.get("cutoff", 0.0))]
     # How many different models have been put in shadow so far (DEC-0019): each one is another chance for luck.
     started = len(state.get("past") or {}) + (1 if state.get("lineage") else 0)
+    pr = lg["promotion"]
     return {"switch": "off" if risk.learning_file(desk).exists() else "on", "lineages_started": started,
             "model": model, "training": training,
+            "limits": {k: pr.get(k) for k in ("drift_psi", "drift_inputs", "max_model_age_days", "demotion_window_signals",
+                                              "alpha", "cutoff_percentile", "half_size_below_percentile")},
+            "scores": _guarded(lambda: score_bins(rows, p.lineage, raw), None) if p is not None else None,
+            "series": _guarded(lambda: liked_series(promotion.scored(rows, p.lineage)), []) if p is not None else [],
+            "events": [{"t": r.get("t"), "event": r.get("event"), "lineage": r.get("lineage"), "version": r.get("model")}
+                       for r in rows if r.get("kind") == "model"][-MODEL_EVENTS:],
+            "lineages": _guarded(lambda: lineages(p, state), []),
+            "registry": _guarded(lambda: registry(models, p), []),
+            "planned": sorted(str(k) for k in (lg.get("models") or {}) if k not in BUILT_MODELS),
             "signals": {"recorded": len(recorded), "finished": len(done), "open": len(recorded) - len(done),
                         "win_rate": sum(r > 0 for r in rs) / len(rs) if rs else None,
                         "mean_r": statistics.fmean(rs) if rs else None, "scored": len(scored),
                         "kept": len(kept), "kept_mean_r": statistics.fmean(kept) if kept else None,
                         "skipped": len(skipped), "skipped_mean_r": statistics.fmean(skipped) if skipped else None}}
+
+
+def _leans(importance: Any) -> list[dict[str, Any]]:
+    """A model's inputs with their weight (logistic) or share of gain (trees), in the trainer's order."""
+    return [{"input": d.get("input"), "weight": d.get("weight", d.get("gain_share"))}
+            for d in (importance or []) if isinstance(d, dict)]
+
+
+def _when(t: Any) -> str | None:
+    """The trainer writes its data window as epoch seconds; an ISO string is passed through."""
+    if isinstance(t, str):
+        return t or None
+    return _iso(t) if isinstance(t, int | float) and not isinstance(t, bool) else None
+
+
+def _age_days(trained_at: str, now: dt.datetime) -> float | None:
+    try:
+        return round((now - dt.datetime.fromisoformat(trained_at)).total_seconds() / 86_400, 2)
+    except (ValueError, TypeError):
+        return None
+
+
+def score_bins(rows: list[dict[str, Any]], lineage: str, pointer: dict[str, Any]) -> dict[str, Any]:
+    """How the lineage in force has scored the desk's signals, finished or not: counts per score band, split by
+    what the model would do with each signal at the cut-offs recorded with it."""
+    seen: dict[Any, dict[str, Any]] = {}
+    for r in rows:
+        if r.get("kind") == "signal" and r.get("lineage") == lineage and _f(r.get("score")) is not None:
+            seen.setdefault(r.get("sid"), r)
+    width, counts = 1.0 / SCORE_BINS, [[0, 0, 0] for _ in range(SCORE_BINS)]
+    for r in seen.values():
+        score, cut, half = float(r["score"]), _f(r.get("cutoff")), _f(r.get("half_below"))
+        what = 2 if cut is not None and score < cut else 1 if half is not None and score < half else 0
+        counts[min(SCORE_BINS - 1, max(0, int(score / width)))][what] += 1
+    used = [i for i, c in enumerate(counts) if any(c)]
+    bins = [{"lo": round(i * width, 4), "hi": round((i + 1) * width, 4), "kept": counts[i][0], "halved": counts[i][1],
+             "skipped": counts[i][2]} for i in range(used[0], used[-1] + 1)] if used else []
+    return {"cutoff": _f(pointer.get("cutoff")), "half_below": _f(pointer.get("half_below")), "bins": bins}
+
+
+def liked_series(obs: list[Any]) -> list[dict[str, Any]]:
+    """Running total R of the signals the model liked and of those it disliked, in the order their trades ended."""
+    out, kept, skipped = [], 0.0, 0.0
+    for n, o in enumerate(obs, 1):
+        if o.kept:
+            kept += o.r
+        else:
+            skipped += o.r
+        out.append({"t": o.exit_t, "n": n, "kept": round(kept, 4), "skipped": round(skipped, 4)})
+    if len(out) <= SERIES_POINTS:
+        return out
+    step = -(-len(out) // SERIES_POINTS)
+    return [x for i, x in enumerate(out) if i % step == 0 or i == len(out) - 1]
+
+
+def lineages(p: Any, state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every model lineage put in shadow on this host with the state it was last in: the one in force, then the rest."""
+    def line(name: str, d: dict[str, Any], current: bool) -> dict[str, Any]:
+        return {"lineage": name, "state": d.get("state") or "shadow", "checkpoints": d.get("checkpoints", 0),
+                "finished": d.get("finished"), "since": d.get("since"), "in_force": current}
+    out = []
+    if state.get("lineage"):
+        out.append(line(str(state["lineage"]), state, p is not None and state["lineage"] == p.lineage))
+    out += [line(str(k), v, False) for k, v in sorted((state.get("past") or {}).items()) if isinstance(v, dict)]
+    return out
+
+
+def registry(models: Path, p: Any) -> list[dict[str, Any]]:
+    """Every model version registered on this host, oldest first. A retraining that chose no model leaves none."""
+    out = []
+    for f in sorted(models.glob("*/card.json")) if models.is_dir() else []:
+        card = _json(f)
+        out.append({"version": f.parent.name, "kind": card.get("kind"), "lineage": card.get("lineage"),
+                    "trained_at": card.get("trained_at"), "examples": card.get("examples"),
+                    "in_force": p is not None and f.parent.name == p.version})
+    return sorted(out, key=lambda x: str(x.get("trained_at") or ""))[-REGISTRY_ROWS:]
 
 
 PUBLISH_JOB = "dashboard-crypto"
@@ -578,7 +697,7 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
                               if desk_of_alert(k) == desk.name]},
         "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now), []),
         "challengers": _guarded(lambda: challengers_view(desk, cfg, every, now), None),
-        "learning": _guarded(lambda: learning_view(desk, cfg, every), None),
+        "learning": _guarded(lambda: learning_view(desk, cfg, every, now), None),
         "desk": _guarded(lambda: desk_view(desk, cfg, every, now), None),
     }
 
