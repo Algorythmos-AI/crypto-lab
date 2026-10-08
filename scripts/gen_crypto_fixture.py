@@ -138,6 +138,10 @@ def sleeves_fixture(state: Path, journal: Path, cfg: dict[str, Any], rng: random
     (state / "sleeves" / "data.json").write_text(json.dumps({"marks": marks}))
     challengers_fixture(journal, end)
     learning_fixture(state, journal, end)
+    # The desk-wide limit at work (DEC-0019): BREAK's signal on a coin TREND already holds is refused.
+    ledger.append(journal, {"id": "sbreakdesk", "kind": "refused", "t": _iso(end + 10), "pair": "XRP/USD", "bar": end - 14_400,
+                            "why": ["desk_coin"], "sleeve": "break", "strategy": cfg["sleeves"]["break"]["hypothesis"],
+                            "tf": 240, "stage": "incubation"})
 
 
 def learning_fixture(state: Path, journal: Path, end: int) -> None:

@@ -93,6 +93,10 @@ ALLOW: dict[str, Any] = {
                               "ci_low": N, "ci_high": N, "profit_factor": N, "dsr": N, "control_p": N,
                               "max_drawdown_pct": N, "failed_on": [S], "admitted": S, "retired": S,
                               "retired_why": S}]},
+    # ---- limits across the tournament's books together (DEC-0019); the baseline is outside them ----
+    "desk": {"one_position_per_coin": B, "max_open_risk_pct": N, "books": I, "positions": I, "coins": [S], "equity": N,
+             "open_risk": N, "open_risk_pct": N, "refused_coin": I, "refused_risk": I, "refused_coin_7d": I,
+             "refused_risk_7d": I},
     # ---- the model (DEC-0016, 3 and 4): what was trained, what is in force, and the tests it has faced ----
     "learning": {"switch": S, "lineages_started": I,
                  "model": {"version": S, "lineage": S, "state": S, "trained_at": S, "checkpoints": I, "max_checkpoints": I,
@@ -403,6 +407,39 @@ def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]
             "drawn_this_week": sum(1 for r in state.values() if r.get("week") == week), "list": out}
 
 
+def desk_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> dict[str, Any] | None:
+    """The desk-wide limits (DEC-0019) and how much of them is in use: the risk open at the stops across the
+    tournament's books against the cap, and how often each limit has refused an entry. None when the config has
+    no such limits."""
+    from wt.crypto import challengers, rules
+    lim = risk.load_desk_limits()
+    sc = cfg.get("sleeves") or {}
+    if lim is None or not sc:
+        return None
+    names = [n for n in rules.NAMES if n in sc]
+    try:
+        names += list(challengers.active(desk, cfg, challengers.state_of(rows))[0])
+    except Exception:  # noqa: BLE001 — the registered sleeves' figures stand whatever the challengers' record says
+        pass
+    marks = {k: float(v[0]) for k, v in (_json(desk.state_dir / "sleeves" / "data.json").get("marks") or {}).items()
+             if isinstance(v, list) and len(v) == 2}
+    start = Decimal(str(sc["common"]["start_equity"]))
+    books = {n: Book.load(risk.sleeve_dir(desk, n) / "book.json", start) for n in names}
+    equity = float(sum((b.equity(marks) for b in books.values()), Decimal(0)))
+    at_risk = float(risk.open_risk(books))
+    week = (now - dt.timedelta(days=7)).isoformat()
+
+    def refused(code: str, since: str = "") -> int:
+        return sum(1 for r in rows if r.get("kind") == "refused" and r.get("sleeve") and code in (r.get("why") or [])
+                   and str(r.get("t", "")) >= since)
+    return {"one_position_per_coin": lim.one_position_per_coin, "max_open_risk_pct": float(lim.max_open_risk_pct),
+            "books": len(books), "positions": sum(len(b.positions) for b in books.values()),
+            "coins": sorted({p for b in books.values() for p in b.positions}), "equity": equity, "open_risk": at_risk,
+            "open_risk_pct": at_risk / equity * 100 if equity > 0 else None,
+            "refused_coin": refused("desk_coin"), "refused_risk": refused("desk_risk"),
+            "refused_coin_7d": refused("desk_coin", week), "refused_risk_7d": refused("desk_risk", week)}
+
+
 def _json(path: Path) -> dict[str, Any]:
     try:
         got = json.loads(path.read_text())
@@ -538,6 +575,7 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "sleeves": _guarded(lambda: sleeves_view(desk, cfg, every, now), []),
         "challengers": _guarded(lambda: challengers_view(desk, cfg, every, now), None),
         "learning": _guarded(lambda: learning_view(desk, cfg, every), None),
+        "desk": _guarded(lambda: desk_view(desk, cfg, every, now), None),
     }
 
 

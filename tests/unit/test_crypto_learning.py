@@ -546,3 +546,30 @@ def test_the_snapshot_says_what_was_trained_what_is_in_force_and_how_its_picks_d
     clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply({"learning": snapshot.ALLOW["learning"]}, {"learning": view})
     assert clean["learning"]["model"]["lineage"] == LINEAGE and clean["learning"]["training"]["models"][1]["name"] == "m1"
     assert sorted(p.name for p in promotion.models_dir(d).iterdir()) == before
+
+
+def test_the_snapshot_shows_the_desk_wide_limits_and_how_much_of_them_is_in_use(crypto, monkeypatch):  # noqa: F811
+    from wt.crypto import snapshot
+    d, _, _ = crypto
+    now = dt.datetime.fromtimestamp(NOW + 900, dt.UTC)
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": None)
+    assert snapshot.desk_view(d, CFG, [], now) is None                           # a checkout from before the limits
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": risk.DeskLimits(True, Decimal("3.0")))
+    empty = snapshot.desk_view(d, CFG, [], now)
+    assert (empty["books"], empty["positions"], empty["coins"], empty["open_risk"], empty["equity"]) == (3, 0, [], 0.0, 30_000.0)
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": None)         # as the fixture trades: both sleeves buy
+    run(venue({"XBTUSD": break_rows()}), crypto)
+    monkeypatch.setattr(risk, "load_desk_limits", lambda key="CD": risk.DeskLimits(True, Decimal("3.0")))
+    rows = journal(d) + [{"kind": "refused", "sleeve": "dip", "t": iso(NOW), "why": ["desk_coin"]},
+                         {"kind": "refused", "sleeve": "dip", "t": iso(NOW - 30 * DAY), "why": ["desk_risk", "exposure"]},
+                         {"kind": "refused", "t": iso(NOW), "why": ["desk_coin"]}]      # the baseline is outside them
+    view = snapshot.desk_view(d, CFG, rows, now)
+    held = sum(len(book_of(d, n).positions) for n in rules.NAMES)
+    assert view["positions"] == held >= 1 and view["coins"] == ["BTC/USD"]
+    at_risk = sum(float(p.risk) for n in rules.NAMES for p in book_of(d, n).positions.values())
+    assert view["open_risk"] == pytest.approx(at_risk) and 0 < view["open_risk_pct"] < 3.0
+    assert view["open_risk_pct"] == pytest.approx(at_risk / view["equity"] * 100)
+    assert (view["refused_coin"], view["refused_coin_7d"], view["refused_risk"], view["refused_risk_7d"]) == (1, 1, 1, 0)
+    assert (view["one_position_per_coin"], view["max_open_risk_pct"]) == (True, 3.0)
+    clean = snapshot.publish.Sanitizer(lambda x: x, None, strict=False).apply({"desk": snapshot.ALLOW["desk"]}, {"desk": view})
+    assert clean["desk"]["coins"] == ["BTC/USD"]
