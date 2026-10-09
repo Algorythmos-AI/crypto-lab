@@ -137,11 +137,41 @@ def sleeves_fixture(state: Path, journal: Path, cfg: dict[str, Any], rng: random
         book.save(folder / "book.json")
     (state / "sleeves" / "data.json").write_text(json.dumps({"marks": marks}))
     challengers_fixture(journal, end)
+    bars_fixture(state, cfg, end)
     learning_fixture(state, journal, end)
     # The desk-wide limit at work (DEC-0019): BREAK's signal on a coin TREND already holds is refused.
     ledger.append(journal, {"id": "sbreakdesk", "kind": "refused", "t": _iso(end + 10), "pair": "XRP/USD", "bar": end - 14_400,
                             "why": ["desk_coin"], "sleeve": "break", "strategy": cfg["sleeves"]["break"]["hypothesis"],
                             "tf": 240, "stage": "incubation"})
+
+
+def bars_fixture(state: Path, cfg: dict[str, Any], end: int, seed: int = 11) -> None:
+    """The bars the sleeves' cycle stores, for the market monitor: 150 closed 4-hour bars of every traded pair and
+    70 daily bars of Bitcoin. Seeded walks that share a common move, so the coins are correlated as real ones
+    are; its own generator, so nothing else in the fixture moves. Invented prices."""
+    rng = random.Random(seed)
+    common = cfg["sleeves"]["common"]
+    start = {"BTC/USD": 118_000.0, "ETH/USD": 3_850.0, "SOL/USD": 172.0, "XRP/USD": 2.38, "ADA/USD": 0.61,
+             "DOGE/USD": 0.19, "LINK/USD": 14.0, "AVAX/USD": 11.4}
+    folder = state / "bars"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    def write(venue: str, tf: int, n: int, first: float, shared: list[float], own: float, drift: float) -> None:
+        step, px, lines = tf * 60, first, []
+        for i in range(n):
+            t = end - (n - i) * step
+            o = px
+            px *= 1 + shared[i] + rng.gauss(drift, own)
+            hi, lo = max(o, px) * (1 + abs(rng.gauss(0, 0.002))), min(o, px) * (1 - abs(rng.gauss(0, 0.002)))
+            lines.append(json.dumps({"t": t, "o": round(o, 6), "h": round(hi, 6), "l": round(lo, 6), "c": round(px, 6),
+                                     "vwap": round((o + px) / 2, 6), "v": round(abs(rng.gauss(900, 300)) + 50, 3),
+                                     "n": rng.randint(200, 4_000)}))
+        (folder / f"{venue}-{tf}m.jsonl").write_text("\n".join(lines) + "\n")
+    shared = [rng.gauss(0.0004, 0.006) for _ in range(150)]
+    for k, (pair, venue) in enumerate(common["pairs"].items()):
+        write(venue, int(common["timeframe_min"]), 150, start[pair], shared, 0.003 + 0.0015 * k, 0.0006 - 0.0003 * k)
+    write(common["pairs"]["BTC/USD"], int(common["daily_min"]), 70, 104_000.0, [rng.gauss(0.002, 0.012) for _ in range(70)],
+          0.004, 0.0)
 
 
 def learning_fixture(state: Path, journal: Path, end: int) -> None:

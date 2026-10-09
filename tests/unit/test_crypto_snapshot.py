@@ -154,3 +154,36 @@ def test_a_sleeves_funnel_counts_every_signal_once_and_the_refusals_add_up():
                    "refused": [{"code": "positions", "count": 2}, {"code": "desk_coin", "count": 1}, {"code": "unknown", "count": 1}]}
     assert sum(r["count"] for r in got["refused"]) == got["fired"] - got["entered"]
     assert snapshot.funnel([{"kind": "exit"}, {"kind": "sleeve"}]) is None          # a sleeve that has recorded no signal
+
+
+def test_the_fixture_carries_the_market_monitor_and_the_books_holdings():
+    """Built by the real builder from stored bars and books: every traded pair is read, the correlation is square,
+    and the holdings add up to what `desk` reports for the same books."""
+    snap = json.loads(gen.FIXTURE.read_text())
+    m, e = snap["monitor"], snap["exposure"]
+    pairs = [r["pair"] for r in m["pairs"]]
+    assert sorted(pairs) == sorted(snap["sleeves"][0]["why_not"][i]["pair"] for i in range(8))
+    assert [r["rank"] for r in m["pairs"]] == list(range(1, 9))
+    assert [r["ret_30"] for r in m["pairs"]] == sorted((r["ret_30"] for r in m["pairs"]), reverse=True)
+    c = m["correlation"]
+    assert len(c["rows"]) == len(c["pairs"]) == 8 and all(len(r["with"]) == 8 for r in c["rows"])
+    assert m["regime"]["code"] in ("up", "down", "mixed") and m["regime"]["pairs"] == 8
+    assert e["equity"] == snap["desk"]["equity"] and [x["pair"] for x in e["coins"]] == snap["desk"]["coins"]
+    assert len(e["books"]) == snap["desk"]["books"]
+    for s in snap["sleeves"]:
+        assert sum(b["n"] for b in s["r_bands"]) == s["trades"]
+
+
+def test_a_desk_with_no_stored_bars_publishes_no_monitor(tmp_path):
+    import dataclasses
+    import datetime as dt
+
+    from wt.core.config import load_yaml
+    from wt.core.desk import DESKS
+    desk = dataclasses.replace(DESKS["crypto"], state_dir=tmp_path)
+    cfg = load_yaml("crypto.yaml")
+    assert snapshot.monitor_view(desk, cfg, dt.datetime(2026, 10, 2, tzinfo=dt.UTC)) is None
+    assert snapshot.monitor_view(desk, {**cfg, "sleeves": None}, dt.datetime(2026, 10, 2, tzinfo=dt.UTC)) is None
+    assert snapshot.exposure_view(desk, {**cfg, "sleeves": None}, []) is None
+    held = snapshot.exposure_view(desk, cfg, [])
+    assert held["coins"] == [] and held["gross"] == 0 and len(held["books"]) == 3

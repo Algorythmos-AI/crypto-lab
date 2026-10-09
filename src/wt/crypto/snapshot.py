@@ -24,7 +24,7 @@ from typing import Any
 
 from wt.core.config import ROOT, STATE_DIR, load_yaml
 from wt.core.desk import DESKS, Desk, desk_of_alert
-from wt.crypto import cycle, risk
+from wt.crypto import cycle, monitor, risk
 from wt.crypto.book import Book
 from wt.ops import publish, safeio
 from wt.ops.publish import B, I, Map, N, S
@@ -78,6 +78,10 @@ ALLOW: dict[str, Any] = {
                  "pnl": {"today": N, "week": N, "month": N, "total": N, "today_trades": I, "week_trades": I,
                          "month_trades": I},
                  "trades": I, "wins": I, "losses": I, "win_rate": N, "mean_r": N, "total_r": N, "fees": N, "max_dd": N,
+                 # Every closed trade of the sleeve by its result in R: what a win and a loss are worth, and the
+                 # count in each band. A band with no lower or no upper edge is open on that side.
+                 "mean_win_r": N, "mean_loss_r": N, "payoff": N, "best_r": N, "worst_r": N, "median_r": N,
+                 "r_bands": [{"lo": N, "hi": N, "n": I}],
                  "positions": [{"pair": S, "qty": N, "entry_price": N, "entry_time": S, "stop": N, "target": N,
                                 "mark": N, "mark_time": S, "unrealised": N, "unrealised_pct": N, "unrealised_r": N,
                                 "risk": N}],
@@ -104,6 +108,24 @@ ALLOW: dict[str, Any] = {
     "desk": {"one_position_per_coin": B, "max_open_risk_pct": N, "books": I, "positions": I, "coins": [S], "equity": N,
              "open_risk": N, "open_risk_pct": N, "refused_coin": I, "refused_risk": I, "refused_coin_7d": I,
              "refused_risk_7d": I},
+    # ---- the market monitor: where each coin stands on its newest closed bars, the market they share and how
+    # they move together. Read from the desk's stored bars; no rule, gate or model reads it (wt.crypto.monitor) ----
+    "monitor": {"tf_min": I, "bar": S,
+                "regime": {"code": S, "btc_close": N, "btc_sma50": N, "btc_vs_sma50_pct": N, "btc_ret_30d": N,
+                           "vol_30d_pct": N, "daily_bar": S, "stale": B, "pairs": I, "above_ema50": I, "breadth": N,
+                           "rising": I, "rising_share": N},
+                "pairs": [{"pair": S, "bar": S, "close": N, "bars": I, "stale": B, "rank": I, "ret_1": N, "ret_day": N,
+                           "ret_30": N, "to_high_20_pct": N, "to_high_30_pct": N, "dist_ema20_pct": N,
+                           "dist_ema50_pct": N, "above_ema20": B, "above_ema50": B, "rsi": N, "atr_pct": N,
+                           "volume_ratio": N}],
+                "correlation": {"bars": I, "pairs": [S], "rows": [{"pair": S, "with": [N]}], "mean": N, "low": N,
+                                "high": N}},
+    # ---- what the tournament's books hold between them, by coin and by book (the baseline is outside it) ----
+    "exposure": {"equity": N, "gross": N, "gross_pct": N, "risk": N, "largest_share_pct": N,
+                 "coins": [{"pair": S, "books": [S], "notional": N, "risk": N, "unrealised": N, "equity_pct": N,
+                            "share_pct": N, "risk_pct": N}],
+                 "books": [{"name": S, "equity": N, "positions": I, "notional": N, "risk": N, "notional_pct": N,
+                            "risk_pct": N}]},
     # ---- the model (DEC-0016, 3 and 4): what was trained, what is in force, and the tests it has faced ----
     "learning": {"switch": S, "lineages_started": I,
                  "model": {"version": S, "lineage": S, "state": S, "trained_at": S, "checkpoints": I, "max_checkpoints": I,
@@ -413,7 +435,7 @@ def sleeves_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], no
             "win_rate": wins / len(pnl) if pnl else None, "mean_r": statistics.fmean(rs) if rs else None,
             "total_r": sum(rs) if rs else None,
             "fees": sum(f for r in exits if (f := _f(r.get("fees"))) is not None) if exits else None,
-            "max_dd": dd if pnl else None, "positions": positions,
+            "max_dd": dd if pnl else None, **monitor.r_summary(rs), "positions": positions,
             "recent": [{"pair": r.get("pair"), "entry_time": r.get("entry_t"), "exit_time": r.get("t"),
                         "entry_price": _f(r.get("entry_price")), "exit_price": _f(r.get("exit_price")),
                         "qty": _f(r.get("qty")), "pnl": _f(r.get("pnl")), "r": fixed.get(str(r.get("id"))),
@@ -466,15 +488,11 @@ def challengers_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]
             "drawn_this_week": sum(1 for r in state.values() if r.get("week") == week), "list": out}
 
 
-def desk_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> dict[str, Any] | None:
-    """The desk-wide limits (DEC-0019) and how much of them is in use: the risk open at the stops across the
-    tournament's books against the cap, and how often each limit has refused an entry. None when the config has
-    no such limits."""
+def tournament_books(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -> tuple[dict[str, Book], dict[str, float]]:
+    """The tournament's paper books (the registered sleeves, then the challengers the bar cycle runs) and the
+    last price the cycle read for each coin held."""
     from wt.crypto import challengers, rules
-    lim = risk.load_desk_limits()
     sc = cfg.get("sleeves") or {}
-    if lim is None or not sc:
-        return None
     names = [n for n in rules.NAMES if n in sc]
     try:
         names += list(challengers.active(desk, cfg, challengers.state_of(rows))[0])
@@ -483,7 +501,43 @@ def desk_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: 
     marks = {k: float(v[0]) for k, v in (_json(desk.state_dir / "sleeves" / "data.json").get("marks") or {}).items()
              if isinstance(v, list) and len(v) == 2}
     start = Decimal(str(sc["common"]["start_equity"]))
-    books = {n: Book.load(risk.sleeve_dir(desk, n) / "book.json", start) for n in names}
+    return {n: Book.load(risk.sleeve_dir(desk, n) / "book.json", start) for n in names}, marks
+
+
+def monitor_view(desk: Desk, cfg: dict[str, Any], now: dt.datetime) -> dict[str, Any] | None:
+    """The market monitor from the bars the sleeves' cycle stores, with its bar times as dates. None when the
+    config has no sleeves or no bar is stored yet."""
+    from wt.crypto import sleeves as engine
+    common = (cfg.get("sleeves") or {}).get("common")
+    if not common:
+        return None
+    got = monitor.view(desk.state_dir / "bars", dict(common["pairs"]), int(common["timeframe_min"]),
+                       int(common["daily_min"]), now.timestamp(), engine._read_bars)
+    if got is None:
+        return None
+    got["bar"] = _iso(got["bar"])
+    got["pairs"] = [{**r, "bar": _iso(r["bar"])} for r in got["pairs"]]
+    daily = got["regime"]["daily_bar"]
+    got["regime"]["daily_bar"] = _iso(daily) if daily is not None else None
+    return got
+
+
+def exposure_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """What the tournament's books hold between them. None when the config has no sleeves."""
+    if not cfg.get("sleeves"):
+        return None
+    return monitor.exposure(*tournament_books(desk, cfg, rows))
+
+
+def desk_view(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: dt.datetime) -> dict[str, Any] | None:
+    """The desk-wide limits (DEC-0019) and how much of them is in use: the risk open at the stops across the
+    tournament's books against the cap, and how often each limit has refused an entry. None when the config has
+    no such limits."""
+    lim = risk.load_desk_limits()
+    sc = cfg.get("sleeves") or {}
+    if lim is None or not sc:
+        return None
+    books, marks = tournament_books(desk, cfg, rows)
     equity = float(sum((b.equity(marks) for b in books.values()), Decimal(0)))
     at_risk = float(risk.open_risk(books))
     week = (now - dt.timedelta(days=7)).isoformat()
@@ -737,6 +791,8 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "challengers": _guarded(lambda: challengers_view(desk, cfg, every, now), None),
         "learning": _guarded(lambda: learning_view(desk, cfg, every, now), None),
         "desk": _guarded(lambda: desk_view(desk, cfg, every, now), None),
+        "monitor": _guarded(lambda: monitor_view(desk, cfg, now), None),
+        "exposure": _guarded(lambda: exposure_view(desk, cfg, every), None),
     }
 
 
