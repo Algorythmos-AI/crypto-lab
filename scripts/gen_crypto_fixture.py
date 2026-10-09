@@ -215,11 +215,13 @@ def challengers_fixture(journal: Path, end: int) -> None:
              {"passed": False, "failed_on": ["ci_not_above_zero_at_1.5x_slippage", "deflated_sharpe", "profit_factor"],
               "base": {**figures, "trades": 212, "trades_per_month": 8.83, "win_rate": 0.33, "mean_r": -0.118, "profit_factor": 0.84,
                        "dsr": 0.004, "max_drawdown_pct": -31.2},
-              "stressed": {"mean_r": -0.131, "ci_low": -0.262, "ci_high": 0.018}, "control_p": 0.41}),
+              "stressed": {"mean_r": -0.131, "ci_low": -0.262, "ci_high": 0.018}, "control_p": 0.41,
+              "costs_r": {"trades": 212, "cost_mean_r": 0.124, "cost_median_r": 0.118, "gross_mean_r": 0.006, "gross_se_r": 0.081}}),
             (base, "neighbour", "break", 9,
              {"passed": True, "failed_on": [], "base": figures,
               "stressed": {"mean_r": 0.198, "ci_low": 0.019, "ci_high": 0.389}, "control_p": 0.01,
-              "confirm": {"passed": True, "trades": 88, "mean_r": 0.131, "profit_factor": 1.22}}),
+              "confirm": {"passed": True, "trades": 88, "mean_r": 0.131, "profit_factor": 1.22},
+              "costs_r": {"trades": 96, "cost_mean_r": 0.071, "cost_median_r": 0.066, "gross_mean_r": 0.283, "gross_se_r": 0.094}}),
             ({**base, "base": "dip", "stop_atr": 4.0, "target_atr": 8.0}, "random", None, 10, None)]
     for k, (dials, slot, of, n_trials, c1) in enumerate(plan):
         d = rules.canonical(dials)

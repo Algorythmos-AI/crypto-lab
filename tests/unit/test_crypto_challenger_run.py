@@ -375,8 +375,12 @@ def test_the_snapshot_lists_every_challenger_with_its_verdict_and_writes_nothing
     assert (older["confirm_passed"], older["confirm_trades"]) == (None, None)   # it failed gate C1: never run on earlier history
     challengers.note(d, "ch-conf", "registered", NOW, dials=WIDE, rules="r", slot="random", of=None, week=WEEK, n_trials=11)
     challengers.note(d, "ch-conf", "c1", NOW, passed=False, failed_on=[challengers.UNCONFIRMED], base={"trades": 40, "mean_r": 0.3},
-                     confirm={"passed": False, "trades": 22, "mean_r": -0.12, "profit_factor": 0.8})
+                     confirm={"passed": False, "trades": 22, "mean_r": -0.12, "profit_factor": 0.8},
+                     costs_r={"trades": 40, "cost_mean_r": 0.11, "cost_median_r": 0.1, "gross_mean_r": 0.41, "gross_se_r": 0.2})
     conf = snapshot.challengers_view(d, CFG, journal(d), now)["list"][0]
+    # What its trades cost in R and made before costs (DEC-0022), for reading the verdict; absent on an older row.
+    assert (conf["cost_mean_r"], conf["gross_mean_r"], conf["gross_se_r"]) == (0.11, 0.41, 0.2)
+    assert (older["cost_mean_r"], older["gross_mean_r"], older["gross_se_r"]) == (None, None, None)
     assert (conf["id"], conf["status"], conf["confirm_passed"], conf["confirm_trades"], conf["confirm_mean_r"],
             conf["confirm_profit_factor"]) == ("ch-conf", "failed", False, 22, -0.12, 0.8)
     risk.learning_file(d).write_text("off\n")
