@@ -71,3 +71,29 @@ def test_the_scorers_answer_is_pinned(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"rows": []}'))
     assert scoring.main(["--models", str(tmp_path / "none")]) == 3
 
+
+
+def test_the_shared_pieces_know_no_desk_and_the_old_names_still_resolve():
+    """Stocks plan, F2: an example and what is worked out from a list of them live in `wt.ml.examples`, which
+    imports nothing of any desk. `wt.ml.dataset` still offers every name."""
+    import ast
+    from pathlib import Path
+
+    from wt.ml import examples
+    src = Path(examples.__file__).read_text()
+    wt_imports = {n.module for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ImportFrom) and (n.module or "").startswith("wt")}
+    assert wt_imports == set()
+    for name in ("Example", "uniqueness", "effective_n", "matrix", "data_hash"):
+        assert getattr(dataset, name) is getattr(examples, name)
+
+
+def test_the_scorer_checks_the_inputs_identity_it_is_given(tmp_path, monkeypatch, capsys):
+    now = dt.datetime.now(dt.UTC)
+    modelfile.register(tmp_path, "m1-other", "logistic", json.dumps(LOGISTIC).encode(), ["atr_pct", "rsi"],
+                       now.isoformat(), 0.4, 0.6, {"note": "pin"}, features="feedfacecafe")
+    req = json.dumps({"rows": [{"atr_pct": 3.0, "rsi": 50.0}]})
+    monkeypatch.setattr("sys.stdin", io.StringIO(req))
+    assert scoring.main(["--models", str(tmp_path)]) == 6                     # the crypto desk's inputs: another question
+    monkeypatch.setattr("sys.stdin", io.StringIO(req))
+    assert scoring.main(["--models", str(tmp_path), "--features-id", "feedfacecafe"]) == 0
+    assert json.loads(capsys.readouterr().out)["scores"] == [0.731059]

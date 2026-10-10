@@ -60,9 +60,11 @@ def boosted(body: bytes, p: Pointer, rows: list[dict[str, Any]]) -> list[float]:
     return [float(v) for v in booster.predict(x)]
 
 
-def score(models: Path, rows: list[dict[str, Any]], now: dt.datetime, max_age_days: float) -> dict[str, Any]:
+def score(models: Path, rows: list[dict[str, Any]], now: dt.datetime, max_age_days: float,
+          features_id: str | None = None) -> dict[str, Any]:
+    """`features_id`: the identity of the inputs the caller sends. The crypto desk's when not given."""
     p = read_pointer(models)
-    if p.features and p.features != signals.features_id():
+    if p.features and p.features != (features_id or signals.features_id()):
         # Trained on inputs that meant something else. A score from it would be a number about another question.
         raise ModelError("features")
     body = read_model(p, now, max_age_days)
@@ -78,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m wt.ml.score")
     ap.add_argument("--models", required=True)
     ap.add_argument("--max-age-days", type=float, default=14.0)
+    ap.add_argument("--features-id", default=None, help="identity of the inputs sent (default: the crypto desk's)")
     a = ap.parse_args(argv)
     try:
         req = json.loads(sys.stdin.read())
@@ -88,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         print("bad request", file=sys.stderr)
         return 2
     try:
-        print(json.dumps(score(Path(a.models), rows, dt.datetime.now(dt.UTC), a.max_age_days)))
+        print(json.dumps(score(Path(a.models), rows, dt.datetime.now(dt.UTC), a.max_age_days, a.features_id)))
         return 0
     except ModelError as e:
         print(str(e.args[0]), file=sys.stderr)
