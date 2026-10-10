@@ -66,12 +66,13 @@ by waiting.
 
 Run as yourself on the host unless a line says `sudo -u wt`.
 
-**1.1 This repository is ready.** [UNVERIFIED: the repository does not exist on GitHub at the time of writing]
+**1.1 This repository is ready.**
 
-- It exists as `Algorythmos-AI/crypto-lab`, `main` holds the final extraction, and the commit to deploy has
-  green `test` and `ml` checks.
-- The final extraction was made at the commit the host runs (1.2) or later, `tools/from-monorepo/drift.py`
-  reported no drift at that commit, and `tools/parity.sh` ended with `PARITY: every item holds`.
+- `Algorythmos-AI/crypto-lab` exists since 2026-10-11. `main` holds the extraction, or a later sync from the
+  old repository (README, "Where this came from"), and the commit to deploy has green `test` and `ml` checks.
+- `tools/from-monorepo/SOURCE.json` on that commit names the commit the host runs (1.2) or a later one whose
+  desk files are the same, `tools/from-monorepo/drift.py` reported no drift there, and `tools/parity.sh` ended
+  with `PARITY: every item holds`.
 
 **1.2 The host runs the code this repository was extracted from.** [UNVERIFIED]
 

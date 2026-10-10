@@ -100,5 +100,20 @@ tools/from-monorepo/extract.sh <clone> <commit> --out <new directory>
 cd <new directory> && make bootstrap && make ci && make bootstrap-ml && make test-ml && tools/parity.sh <clone>
 ```
 
+This repository was published from such a build on 2026-10-11 (`tools/from-monorepo/SOURCE.json` names the
+commit). Since then a rebuilt directory cannot replace `main`: that would rewrite history, which the default
+branch refuses. Until the desk's code leaves `trading-lab-research`, a later change there arrives here as one
+commit on a pull request. Build at the new commit as above, then, in this checkout:
+
+```
+git checkout -b sync/<commit, first 7 digits>
+git rm -rq . && git -C <new directory> archive HEAD | tar -x -C . && git add -A
+git commit -m "sync: trading-lab-research at <commit>"
+make ci && make test-ml && tools/parity.sh <clone>
+```
+
+The tree is then exactly the new build's. The history of those changes stays in `trading-lab-research`, and the
+commit message names the commit they were taken at.
+
 Research records that moved keep their ids (`HYP-0020` to `HYP-0024`, `DEC-0012` to `DEC-0027` where they are
 the desk's, `EXP-0016` to `EXP-0022`, `LL-0003` to `LL-0006`). New records here start `CRY-`.
