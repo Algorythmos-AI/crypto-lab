@@ -1,4 +1,4 @@
-"""Writes dashboard/test/fixtures/crypto.v1.json: a crypto desk snapshot built by the real builder
+"""Writes contracts/crypto.v1.json: a crypto desk snapshot built by the real builder
 (wt.crypto.snapshot.collect) from a synthetic, seeded desk state. No real prices, trades or account data.
 
     python scripts/gen_crypto_fixture.py            # rewrite the fixture
@@ -28,7 +28,7 @@ from wt.crypto.book import Book  # noqa: E402
 from wt.crypto.data import PairInfo  # noqa: E402
 from wt.ops import publish  # noqa: E402
 
-FIXTURE = ROOT / "dashboard" / "test" / "fixtures" / "crypto.v1.json"
+FIXTURE = ROOT / "contracts" / "crypto.v1.json"               # crypto-lab: the dashboard is not in this repository
 NOW = dt.datetime(2026, 10, 2, 20, 0, 40, tzinfo=dt.UTC)
 BASE = {"BTC/USD": 120_000.0, "ETH/USD": 3_900.0, "SOL/USD": 175.0}
 INFO = PairInfo(8, Decimal("0.01"), Decimal("0.00001"), Decimal("1"))

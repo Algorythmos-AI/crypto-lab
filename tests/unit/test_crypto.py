@@ -583,11 +583,15 @@ def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
 # ---------------------------------------------------------------- rollout (phase 4)
 
 def test_the_desk_is_born_with_its_kill_switch_on(crypto):
-    """The first cycle on a host creates the state directory and the kill file together: no window with entries on."""
+    """crypto-lab (CRY-DEC-0001): a cycle never makes a desk. Without the state directory it refuses and creates
+    nothing. `wt.ops.init` makes the directory and the kill file together: no window with entries on."""
+    from wt.ops import init
     desk, a, _ = crypto
     import shutil
     shutil.rmtree(desk.state_dir)
     v = venue_with_a_signal()
+    assert run(v, crypto) == init.REFUSED and not desk.state_dir.exists()      # no state, no run, nothing made
+    init.create(desk)
     run(v, crypto)
     assert desk.kill_file.exists() and "owner removes it" in desk.kill_file.read_text()
     assert [r["kind"] for r in journal(desk)] == ["refused", "cycle"] and journal(desk)[0]["why"] == ["kill"]

@@ -32,6 +32,7 @@ from wt.crypto.book import Book, Position, Rejected, utc_day
 from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
 from wt.crypto.quality import assess
 from wt.crypto.strategy import Params, entry, find_exit, read
+from wt.ops import init
 from wt.ops.alerts import Alerts
 
 SEEN_TAIL = 2000                        # journal lines checked for an id before an outbox record is appended
@@ -119,10 +120,10 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
     p, costs, qcfg, tf = Params.of(cfg["strategy"]), cfg["costs"], cfg["quality"], int(cfg["timeframe_min"])
     cfg_hash, day = config_hash(cfg), utc_day(now)
     if not desk.state_dir.exists():
-        # The desk's first run on this host. It starts with its kill switch on: it records and publishes, and
-        # opens nothing until the owner removes the file (DEC-0012).
-        desk.state_dir.mkdir(parents=True)
-        desk.kill_file.write_text(f"created with the desk on {day}; the owner removes it (make unkill DESK=crypto)\n")
+        # crypto-lab (CRY-DEC-0001): a missing state directory is never a new desk. A cycle makes nothing here;
+        # `python -m wt.ops.init --new-desk` makes a desk on purpose, with its kill switch on (DEC-0012).
+        print(f"Refusing: {init.problem(desk)}", file=sys.stderr)
+        return init.REFUSED
     book_path = desk.state_dir / "book.json"
     book = Book.load(book_path, Decimal(str(cfg["account"]["start_equity"])))
     flush(book, book_path, desk.journal)                    # repair: anything decided last time is journalled now
@@ -258,4 +259,4 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(init.guard() or run())          # crypto-lab (CRY-DEC-0001): no state, no run

@@ -28,6 +28,7 @@ from wt.core.desk import DESKS, Desk
 from wt.crypto import outcomes, promotion, risk
 from wt.crypto.book import write_atomic
 from wt.crypto.data import Bar
+from wt.ops import init
 
 DAY = 86_400
 ML_PYTHON = ".venv-ml/bin/python"
@@ -168,4 +169,4 @@ def judge(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: floa
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(init.guard() or run())          # crypto-lab (CRY-DEC-0001): no state, no run

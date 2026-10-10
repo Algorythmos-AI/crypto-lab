@@ -25,6 +25,7 @@ from wt.core import ledger
 from wt.core.desk import DESKS, Desk
 from wt.crypto.harvest import desk_of, off_file
 from wt.crypto.risk import latch_file, learning_file
+from wt.ops import init
 from wt.ops.locks import job_lock
 
 JOB = "crypto"
@@ -94,4 +95,4 @@ def main(argv: list[str] | None = None, desk: Desk | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): a control never makes a desk

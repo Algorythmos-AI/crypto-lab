@@ -43,6 +43,7 @@ from wt.core.desk import DESKS, Desk
 from wt.crypto import risk, rules
 from wt.crypto.book import write_atomic
 from wt.crypto.data import Bar, DataError, PairInfo
+from wt.ops import init
 from wt.ops.locks import job_lock
 
 DAY = 86_400
@@ -559,4 +560,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): no state, no run

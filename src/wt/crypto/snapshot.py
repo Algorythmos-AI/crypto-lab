@@ -26,13 +26,13 @@ from wt.core.config import ROOT, STATE_DIR, load_yaml
 from wt.core.desk import DESKS, Desk, desk_of_alert
 from wt.crypto import cycle, harvest, monitor, risk
 from wt.crypto.book import Book
-from wt.ops import publish, safeio
+from wt.ops import init, publish, safeio
 from wt.ops.publish import B, I, Map, N, S
 
 SCHEMA_ID = DESKS["crypto"].snapshot_schema
 SCHEMA_VERSION = 1
 CYCLE_JOB, CYCLE_WAIT_S = "crypto", 90.0   # the bar cycle's job lock, and how long a publish waits for it
-SCHEMA_PATH = ROOT / "dashboard" / "src" / "lib" / "crypto.schema.json"
+SCHEMA_PATH = ROOT / "contracts" / "crypto.schema.json"       # crypto-lab: the dashboard is not in this repository
 OUT = STATE_DIR / "dashboard-crypto"
 WINDOW_AHEAD_D = 14                     # the off-host watchdog pages while `now` is inside the published window
 OBS_DAYS = 7
@@ -960,4 +960,4 @@ def _publish(a: argparse.Namespace) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): no state, no snapshot
