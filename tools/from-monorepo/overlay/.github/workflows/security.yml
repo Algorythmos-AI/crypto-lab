@@ -1,0 +1,30 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 20 * * 0" # weekly, Monday 06:00 Sydney
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: Algorythmos-AI/.github/.github/workflows/security.yml@1078ed679bed88c7a41744cda79aa505eb4ff277
+    with:
+      semgrep: false
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # Every dependency is pinned, so audit the pins directly instead of resolving a temporary environment.
+      - run: uvx pip-audit --strict --disable-pip --no-deps -r requirements.lock.txt -r requirements-dev.lock.txt
+      # The ML environment's pins, on their own: it shares packages with the trading lock, and one audit refuses
+      # a package named twice.
+      - run: uvx pip-audit --strict --disable-pip --no-deps -r requirements-ml.lock.txt

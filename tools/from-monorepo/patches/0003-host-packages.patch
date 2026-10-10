@@ -1,0 +1,15 @@
+diff --git a/tests/unit/test_ml_platform.py b/tests/unit/test_ml_platform.py
+index 8e303af..dbf5fc1 100644
+--- a/tests/unit/test_ml_platform.py
++++ b/tests/unit/test_ml_platform.py
+@@ -255,8 +255,8 @@ def test_an_environment_that_cannot_import_its_libraries_is_never_swapped_in(tmp
+     monkeypatch.setattr(deploy, "_run", _fake_uv(tmp_path, calls, fail_on=CHECK))
+     assert deploy.sync_ml() == "failed" and "no network" in said[-1]
+     assert "4.7.0" in (live / "built-from").read_text() and not (tmp_path / ".venv-ml.next").exists()
+-    for f in ("deploy/gcp/cloud-init.yaml", "deploy/oci/cloud-init.yaml.tftpl"):
+-        assert "libgomp1" in (ROOT / f).read_text()
++    # crypto-lab: the shared host's first-boot files are another repository's; this one lists what it needs.
++    assert "libgomp1" in (ROOT / "deploy/host-packages.txt").read_text().split()
+ 
+ 
+ def test_the_ml_lock_is_part_of_the_checked_code_and_of_the_audit():

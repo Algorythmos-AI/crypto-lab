@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly restore test of the crypto desk's evidence backup
+
+[Timer]
+OnCalendar=Sun 06:20 UTC
+AccuracySec=1s
+Persistent=true
+Unit=cryptolab-restore-test.service
+
+[Install]
+WantedBy=timers.target

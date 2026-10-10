@@ -1,0 +1,7 @@
+[Unit]
+Description=Crypto Lab: page the owner that %i failed
+# Deliberately no dependency on the secrets unit: paging must work when the secrets fetch is what failed.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cryptolab-alert %i

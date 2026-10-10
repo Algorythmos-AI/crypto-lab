@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily backup and anchor of the crypto desk's evidence (a quiet hour for every platform on the host)
+
+[Timer]
+OnCalendar=*-*-* 05:20 UTC
+AccuracySec=1s
+Persistent=true
+Unit=cryptolab-backup.service
+
+[Install]
+WantedBy=timers.target

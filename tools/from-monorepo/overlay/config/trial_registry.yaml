@@ -1,0 +1,16 @@
+# The trial count of family C for the Deflated Sharpe Ratio, read by wt.research.trials.family_trial_count.
+# Every configuration evaluated on development data counts, whatever experiment ran it.
+#
+# Origin: trading-lab-research `config/trial_registry.yaml` at 217a4eb (split). Removed: `history`, the global
+# count of the equity strategies. Every line below this header is that file's, byte for byte
+# (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC record.
+
+# Trial families counted apart from the global (equity) count above. Same rules: append-only, the newest accepted
+# row is in force. Read by wt.research.trials.family_trial_count.
+families:
+  C:                                                      # crypto desk (DEC-0012)
+    - {decision: DEC-0012, total: 4, status: accepted}    # original, the 2026-04-26 loosening, HYP-0020, AUD -> USD pairs
+    - {decision: DEC-0015, total: 7, status: accepted}    # HYP-0021 TREND, HYP-0022 BREAK, HYP-0023 DIP
+    - {decision: DEC-0019, total: 8, status: accepted}    # the tournament under desk-wide limits (EXP-0020)
+    - {decision: DEC-0020, total: 11, status: accepted}   # resting-limit entries screened on the three sleeves (EXP-0021)
+    - {decision: DEC-0025, total: 12, status: accepted}   # HYP-0024 TREND with ranked entries (one trial)

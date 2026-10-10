@@ -1,0 +1,13 @@
+# The trading environment (.venv): what the desk's jobs and their tests import. Every pin is the one the desk ran
+# with inside trading-lab-research at 217a4eb (its requirements.lock.txt), so the numbers it computes are the same.
+# Compile with (the constraint file is that lockfile: it holds the transitive pins to the same versions):
+#   uv pip compile --python-version 3.12 --generate-hashes -c <trading-lab-research>/requirements.lock.txt \
+#     requirements.in -o requirements.lock.txt
+numpy==2.5.3
+scipy==1.18.1                   # wt.backtest.stats: bootstrap intervals and the deflated Sharpe ratio
+pyyaml==6.0.3
+python-dotenv==1.2.3            # wt.core.config
+requests==2.34.2                # public market data, alerts, healthchecks, the snapshot's POST
+jsonschema==4.25.1              # the snapshot is validated against its own schema before it is sent
+pytest==9.1.1
+ruff==0.16.9

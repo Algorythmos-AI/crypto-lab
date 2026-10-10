@@ -1,0 +1,9 @@
+# Dev tools (type checking). Compile with:
+#   uv pip compile --python-version 3.12 --generate-hashes requirements-dev.in -o requirements-dev.lock.txt
+mypy==1.18.2
+mypy-extensions==1.1.0
+pathspec==1.1.1
+types-pyyaml==6.0.12.20260906
+types-requests==2.33.0.20260906
+typing-extensions==4.16.0
+urllib3==2.8.0

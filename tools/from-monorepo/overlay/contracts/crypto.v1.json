@@ -1,0 +1,2383 @@
+{
+ "activity": {
+  "cycles_24h": 95,
+  "daily": [
+   {
+    "cycles": 15,
+    "day": "2026-09-27",
+    "entries": 0,
+    "exits": 0,
+    "fires": 0,
+    "observations": 48
+   },
+   {
+    "cycles": 96,
+    "day": "2026-09-28",
+    "entries": 2,
+    "exits": 2,
+    "fires": 7,
+    "observations": 288
+   },
+   {
+    "cycles": 96,
+    "day": "2026-09-29",
+    "entries": 2,
+    "exits": 1,
+    "fires": 7,
+    "observations": 288
+   },
+   {
+    "cycles": 96,
+    "day": "2026-09-30",
+    "entries": 1,
+    "exits": 2,
+    "fires": 3,
+    "observations": 288
+   },
+   {
+    "cycles": 96,
+    "day": "2026-10-01",
+    "entries": 2,
+    "exits": 2,
+    "fires": 5,
+    "observations": 288
+   },
+   {
+    "cycles": 81,
+    "day": "2026-10-02",
+    "entries": 1,
+    "exits": 0,
+    "fires": 2,
+    "observations": 240
+   }
+  ],
+  "entries_7d": 8,
+  "expected_24h": 96,
+  "failed_24h": 1,
+  "fires_7d": 24,
+  "observations_7d": 1440,
+  "refused_7d": {
+   "kill": 1,
+   "spread_wide": 4
+  }
+ },
+ "alerts": {
+  "firing": []
+ },
+ "as_of": "2026-10-02T20:00:40+00:00",
+ "book": {
+  "cash": 9947.399396940724,
+  "equity": 9997.508590495923,
+  "exposure": 49.9995463176,
+  "positions": [
+   {
+    "entry_price": 129318.09,
+    "entry_time": "2026-10-02T10:15:10+00:00",
+    "mark": 129601.68,
+    "pair": "BTC/USD",
+    "qty": 0.00038664,
+    "stop": 128671.5,
+    "target": 130611.27,
+    "unrealised_pct": 0.21929646501892552
+   }
+  ],
+  "return_pct": -0.024914095040762252,
+  "start_equity": 10000.0
+ },
+ "challengers": {
+  "drawn_this_week": 1,
+  "failed": 1,
+  "learning": "on",
+  "list": [
+   {
+    "admitted": null,
+    "ci_high": null,
+    "ci_low": null,
+    "confirm_mean_r": null,
+    "confirm_passed": null,
+    "confirm_profit_factor": null,
+    "confirm_trades": null,
+    "control_p": null,
+    "cost_mean_r": null,
+    "dsr": null,
+    "failed_on": [],
+    "gross_mean_r": null,
+    "gross_se_r": null,
+    "id": "ch-df667c64",
+    "max_drawdown_pct": null,
+    "mean_r": null,
+    "n_trials": 10,
+    "of": null,
+    "profit_factor": null,
+    "registered": "2026-10-01T20:02:00+00:00",
+    "retired": null,
+    "retired_why": null,
+    "rules": "dip rule on daily bars, stop 4 ATR (at least 2%), target 8 ATR, only while Bitcoin trends up, volume above average",
+    "slot": "random",
+    "status": "registered",
+    "trades": null,
+    "trades_per_month": null,
+    "week": "2026-W40",
+    "win_rate": null
+   },
+   {
+    "admitted": "2026-09-24T20:06:01+00:00",
+    "ci_high": 0.389,
+    "ci_low": 0.019,
+    "confirm_mean_r": 0.131,
+    "confirm_passed": true,
+    "confirm_profit_factor": 1.22,
+    "confirm_trades": 88,
+    "control_p": 0.01,
+    "cost_mean_r": 0.071,
+    "dsr": 0.962,
+    "failed_on": [],
+    "gross_mean_r": 0.283,
+    "gross_se_r": 0.094,
+    "id": "ch-29db21a0",
+    "max_drawdown_pct": -7.4,
+    "mean_r": 0.212,
+    "n_trials": 9,
+    "of": "break",
+    "profit_factor": 1.41,
+    "registered": "2026-09-24T20:01:00+00:00",
+    "retired": null,
+    "retired_why": null,
+    "rules": "break rule on daily bars, 20-bar high, stop 3 ATR (at least 2%), target 6 ATR, only while Bitcoin trends up, volume above average",
+    "slot": "neighbour",
+    "status": "live",
+    "trades": 96,
+    "trades_per_month": 4.0,
+    "week": "2026-W39",
+    "win_rate": 0.4375
+   },
+   {
+    "admitted": null,
+    "ci_high": 0.018,
+    "ci_low": -0.262,
+    "confirm_mean_r": null,
+    "confirm_passed": null,
+    "confirm_profit_factor": null,
+    "confirm_trades": null,
+    "control_p": 0.41,
+    "cost_mean_r": 0.124,
+    "dsr": 0.004,
+    "failed_on": [
+     "ci_not_above_zero_at_1.5x_slippage",
+     "deflated_sharpe",
+     "profit_factor"
+    ],
+    "gross_mean_r": 0.006,
+    "gross_se_r": 0.081,
+    "id": "ch-738d9063",
+    "max_drawdown_pct": -31.2,
+    "mean_r": -0.118,
+    "n_trials": 8,
+    "of": null,
+    "profit_factor": 0.84,
+    "registered": "2026-09-24T20:00:00+00:00",
+    "retired": null,
+    "retired_why": null,
+    "rules": "trend rule on 4-hour bars, 20-bar high, stop 3 ATR (at least 2%), trailed 4 ATR, only while Bitcoin trends up, volume above average",
+    "slot": "random",
+    "status": "failed",
+    "trades": 212,
+    "trades_per_month": 8.83,
+    "week": "2026-W39",
+    "win_rate": 0.33
+   }
+  ],
+  "live": 1,
+  "max_live": 6,
+  "max_registered": 60,
+  "per_week": 2,
+  "registered": 3,
+  "retired": 0,
+  "week": "2026-W40"
+ },
+ "config": {
+  "hash": "01aec7d7c569",
+  "pairs": [
+   "BTC/USD",
+   "ETH/USD",
+   "SOL/USD"
+  ],
+  "quote_currency": "USD",
+  "timeframe_min": 15,
+  "venue": "kraken"
+ },
+ "desk": {
+  "books": 4,
+  "coins": [
+   "XRP/USD"
+  ],
+  "equity": 40374.309599969434,
+  "max_open_risk_pct": 3.0,
+  "one_position_per_coin": true,
+  "open_risk": 99.99999999936,
+  "open_risk_pct": 0.24768225386431303,
+  "positions": 1,
+  "refused_coin": 1,
+  "refused_coin_7d": 1,
+  "refused_risk": 0,
+  "refused_risk_7d": 0
+ },
+ "distributions": {
+  "atr_pct": [
+   {
+    "hi": 0.0264,
+    "lo": 0.0071,
+    "n": 40
+   },
+   {
+    "hi": 0.0456,
+    "lo": 0.0264,
+    "n": 63
+   },
+   {
+    "hi": 0.0649,
+    "lo": 0.0456,
+    "n": 94
+   },
+   {
+    "hi": 0.0842,
+    "lo": 0.0649,
+    "n": 143
+   },
+   {
+    "hi": 0.1034,
+    "lo": 0.0842,
+    "n": 183
+   },
+   {
+    "hi": 0.1227,
+    "lo": 0.1034,
+    "n": 226
+   },
+   {
+    "hi": 0.142,
+    "lo": 0.1227,
+    "n": 196
+   },
+   {
+    "hi": 0.1612,
+    "lo": 0.142,
+    "n": 169
+   },
+   {
+    "hi": 0.1805,
+    "lo": 0.1612,
+    "n": 153
+   },
+   {
+    "hi": 0.1998,
+    "lo": 0.1805,
+    "n": 99
+   },
+   {
+    "hi": 0.219,
+    "lo": 0.1998,
+    "n": 38
+   },
+   {
+    "hi": 0.2383,
+    "lo": 0.219,
+    "n": 36
+   }
+  ],
+  "rsi": [
+   {
+    "hi": 23.9158,
+    "lo": 18.62,
+    "n": 44
+   },
+   {
+    "hi": 29.2117,
+    "lo": 23.9158,
+    "n": 50
+   },
+   {
+    "hi": 34.5075,
+    "lo": 29.2117,
+    "n": 90
+   },
+   {
+    "hi": 39.8033,
+    "lo": 34.5075,
+    "n": 158
+   },
+   {
+    "hi": 45.0992,
+    "lo": 39.8033,
+    "n": 191
+   },
+   {
+    "hi": 50.395,
+    "lo": 45.0992,
+    "n": 203
+   },
+   {
+    "hi": 55.6908,
+    "lo": 50.395,
+    "n": 192
+   },
+   {
+    "hi": 60.9867,
+    "lo": 55.6908,
+    "n": 188
+   },
+   {
+    "hi": 66.2825,
+    "lo": 60.9867,
+    "n": 142
+   },
+   {
+    "hi": 71.5783,
+    "lo": 66.2825,
+    "n": 102
+   },
+   {
+    "hi": 76.8742,
+    "lo": 71.5783,
+    "n": 49
+   },
+   {
+    "hi": 82.17,
+    "lo": 76.8742,
+    "n": 31
+   }
+  ],
+  "volume_ratio": [
+   {
+    "hi": 0.2348,
+    "lo": 0.044,
+    "n": 82
+   },
+   {
+    "hi": 0.4255,
+    "lo": 0.2348,
+    "n": 81
+   },
+   {
+    "hi": 0.6163,
+    "lo": 0.4255,
+    "n": 108
+   },
+   {
+    "hi": 0.807,
+    "lo": 0.6163,
+    "n": 130
+   },
+   {
+    "hi": 0.9978,
+    "lo": 0.807,
+    "n": 123
+   },
+   {
+    "hi": 1.1885,
+    "lo": 0.9978,
+    "n": 149
+   },
+   {
+    "hi": 1.3793,
+    "lo": 1.1885,
+    "n": 117
+   },
+   {
+    "hi": 1.57,
+    "lo": 1.3793,
+    "n": 108
+   },
+   {
+    "hi": 1.7608,
+    "lo": 1.57,
+    "n": 64
+   },
+   {
+    "hi": 1.9515,
+    "lo": 1.7608,
+    "n": 47
+   },
+   {
+    "hi": 2.1423,
+    "lo": 1.9515,
+    "n": 36
+   },
+   {
+    "hi": 2.333,
+    "lo": 2.1423,
+    "n": 26
+   }
+  ],
+  "vwap_distance_pct": [
+   {
+    "hi": -0.4865,
+    "lo": -0.587,
+    "n": 36
+   },
+   {
+    "hi": -0.386,
+    "lo": -0.4865,
+    "n": 43
+   },
+   {
+    "hi": -0.2855,
+    "lo": -0.386,
+    "n": 104
+   },
+   {
+    "hi": -0.185,
+    "lo": -0.2855,
+    "n": 132
+   },
+   {
+    "hi": -0.0845,
+    "lo": -0.185,
+    "n": 207
+   },
+   {
+    "hi": 0.016,
+    "lo": -0.0845,
+    "n": 238
+   },
+   {
+    "hi": 0.1164,
+    "lo": 0.016,
+    "n": 231
+   },
+   {
+    "hi": 0.2169,
+    "lo": 0.1164,
+    "n": 163
+   },
+   {
+    "hi": 0.3174,
+    "lo": 0.2169,
+    "n": 133
+   },
+   {
+    "hi": 0.4179,
+    "lo": 0.3174,
+    "n": 84
+   },
+   {
+    "hi": 0.5184,
+    "lo": 0.4179,
+    "n": 36
+   },
+   {
+    "hi": 0.6189,
+    "lo": 0.5184,
+    "n": 33
+   }
+  ]
+ },
+ "expected_windows": [
+  {
+   "end": "2026-10-16T20:00:40+00:00",
+   "session": "always",
+   "start": "2026-10-01T20:00:40+00:00"
+  }
+ ],
+ "exposure": {
+  "books": [
+   {
+    "equity": 10315.904800003878,
+    "name": "trend",
+    "notional": 2548.95833331702,
+    "notional_pct": 24.709013729130785,
+    "positions": 1,
+    "risk": 138.54166666577999,
+    "risk_pct": 1.3429909382813217
+   },
+   {
+    "equity": 10058.404799965554,
+    "name": "break",
+    "notional": 0.0,
+    "notional_pct": 0.0,
+    "positions": 0,
+    "risk": 0.0,
+    "risk_pct": 0.0
+   },
+   {
+    "equity": 10000.0,
+    "name": "dip",
+    "notional": 0.0,
+    "notional_pct": 0.0,
+    "positions": 0,
+    "risk": 0.0,
+    "risk_pct": 0.0
+   },
+   {
+    "equity": 10000.0,
+    "name": "ch-29db21a0",
+    "notional": 0.0,
+    "notional_pct": 0.0,
+    "positions": 0,
+    "risk": 0.0,
+    "risk_pct": 0.0
+   }
+  ],
+  "coins": [
+   {
+    "books": [
+     "trend"
+    ],
+    "equity_pct": 6.313317450062228,
+    "notional": 2548.95833331702,
+    "pair": "XRP/USD",
+    "risk": 138.54166666577999,
+    "risk_pct": 0.3431431225411836,
+    "share_pct": 100.0,
+    "unrealised": 28.499999999817515
+   }
+  ],
+  "equity": 40374.309599969434,
+  "gross": 2548.95833331702,
+  "gross_pct": 6.313317450062228,
+  "largest_share_pct": 100.0,
+  "risk": 138.54166666577999
+ },
+ "harvest": {
+  "books": [
+   {
+    "equity": 10000.0,
+    "name": "h-trend",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 34,
+    "signals_7d": 34,
+    "tf_min": 240,
+    "trades": 29
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-break",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 0,
+    "signals_7d": 0,
+    "tf_min": 240,
+    "trades": 0
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-dip",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 0,
+    "signals_7d": 0,
+    "tf_min": 240,
+    "trades": 0
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-trend-60m",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 0,
+    "signals_7d": 0,
+    "tf_min": 60,
+    "trades": 0
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-break-60m",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 33,
+    "signals_7d": 33,
+    "tf_min": 60,
+    "trades": 29
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-dip-60m",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 21,
+    "signals_7d": 21,
+    "tf_min": 60,
+    "trades": 20
+   },
+   {
+    "equity": 10000.0,
+    "name": "h-explore",
+    "open": 0,
+    "return_pct": 0.0,
+    "signals": 32,
+    "signals_7d": 32,
+    "tf_min": 60,
+    "trades": 29
+   }
+  ],
+  "coins": 30,
+  "daily": [
+   {
+    "day": "2026-09-19",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-20",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-21",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-22",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-23",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-24",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-25",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-26",
+    "entries": 0,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 0
+   },
+   {
+    "day": "2026-09-27",
+    "entries": 2,
+    "exits": 0,
+    "labelled": 0,
+    "signals": 2
+   },
+   {
+    "day": "2026-09-28",
+    "entries": 12,
+    "exits": 11,
+    "labelled": 11,
+    "signals": 12
+   },
+   {
+    "day": "2026-09-29",
+    "entries": 20,
+    "exits": 17,
+    "labelled": 17,
+    "signals": 20
+   },
+   {
+    "day": "2026-09-30",
+    "entries": 22,
+    "exits": 25,
+    "labelled": 24,
+    "signals": 22
+   },
+   {
+    "day": "2026-10-01",
+    "entries": 30,
+    "exits": 29,
+    "labelled": 29,
+    "signals": 30
+   },
+   {
+    "day": "2026-10-02",
+    "entries": 34,
+    "exits": 25,
+    "labelled": 26,
+    "signals": 34
+   }
+  ],
+  "decision": "DEC-0027",
+  "entries_7d": 120,
+  "entries_today": 34,
+  "exits_today": 25,
+  "feature_rows_7d": 144,
+  "labelled": 107,
+  "labelled_7d": 107,
+  "mean_r": 0.20186915887850468,
+  "signals_7d": 120,
+  "signals_today": 34,
+  "since": "2026-09-27",
+  "switch": "on",
+  "win_rate": 0.4953271028037383
+ },
+ "jobs": {
+  "last": {
+   "crypto": {
+    "ended": "2026-10-02T20:00:19+00:00",
+    "exit": 0,
+    "sha": "abc1234",
+    "started": "2026-10-02T20:00:10+00:00",
+    "status": "ok"
+   },
+   "dashboard-crypto": {
+    "ended": "2026-10-02T19:46:04+00:00",
+    "exit": 0,
+    "sha": "abc1234",
+    "started": "2026-10-02T19:46:00+00:00",
+    "status": "ok"
+   }
+  },
+  "runs": []
+ },
+ "kill": {
+  "on": true,
+  "since": "2026-09-30T20:00:40+00:00"
+ },
+ "learning": {
+  "events": [
+   {
+    "event": "lineage",
+    "lineage": "m1:C=0.1",
+    "t": "2026-09-25T20:00:00+00:00",
+    "version": "m1-20260925-fixture0"
+   },
+   {
+    "event": "checkpoint",
+    "lineage": "m1:C=0.1",
+    "t": "2026-09-30T20:00:00+00:00",
+    "version": "m1-20260925-fixture0"
+   }
+  ],
+  "limits": {
+   "alpha": 0.05,
+   "cutoff_percentile": 40.0,
+   "demotion_window_signals": 120,
+   "drift_inputs": 3,
+   "drift_psi": 0.25,
+   "half_size_below_percentile": 60.0,
+   "max_model_age_days": 14.0
+  },
+  "lineages": [
+   {
+    "checkpoints": 1,
+    "finished": 74,
+    "in_force": true,
+    "lineage": "m1:C=0.1",
+    "since": "2026-09-25T20:00:00+00:00",
+    "state": "shadow"
+   },
+   {
+    "checkpoints": 0,
+    "finished": 12,
+    "in_force": false,
+    "lineage": "m2:n_estimators=100,num_leaves=4",
+    "since": "2026-09-18T20:00:00+00:00",
+    "state": "shadow"
+   }
+  ],
+  "lineages_started": 2,
+  "model": {
+   "age_days": 7.0,
+   "by_sleeve": {
+    "break": {
+     "mean_r": -0.118,
+     "n": 3644
+    },
+    "dip": {
+     "mean_r": -0.102,
+     "n": 1127
+    },
+    "trend": {
+     "mean_r": -0.071,
+     "n": 4102
+    }
+   },
+   "calib_a": 0.94,
+   "calib_b": -0.03,
+   "checkpoint_signals": 60,
+   "checkpoints": 1,
+   "cutoff": 0.31,
+   "drift_inputs": [],
+   "drift_psi": {},
+   "drifted": false,
+   "features": "fixture00001",
+   "finished": 74,
+   "half_below": 0.36,
+   "inputs": 3,
+   "kind": "logistic",
+   "leans_on": [
+    {
+     "input": "btc_above_sma50",
+     "weight": 0.31
+    },
+    {
+     "input": "stop_pct",
+     "weight": -0.22
+    },
+    {
+     "input": "volume_ratio",
+     "weight": 0.12
+    },
+    {
+     "input": "rsi",
+     "weight": -0.07
+    },
+    {
+     "input": "is_trend",
+     "weight": 0.05
+    },
+    {
+     "input": "hour_utc",
+     "weight": 0.01
+    }
+   ],
+   "lineage": "m1:C=0.1",
+   "looks": [
+    {
+     "brier": 0.2231,
+     "brier_base": 0.2254,
+     "checkpoint": 1,
+     "lower": -0.318,
+     "passed": false,
+     "signals": 60,
+     "spread": 0.142,
+     "t": "2026-09-30T20:00:00+00:00"
+    }
+   ],
+   "max_checkpoints": 6,
+   "next_checkpoint": 120,
+   "score_psi": 0.062,
+   "sha": "f1x7ure0f1x7",
+   "since": "2026-09-25T20:00:00+00:00",
+   "state": "shadow",
+   "trained_at": "2026-09-25T20:00:00+00:00",
+   "version": "m1-20260925-fixture0"
+  },
+  "planned": [
+   "forecaster",
+   "m3",
+   "regime"
+  ],
+  "registry": [
+   {
+    "examples": 8790,
+    "in_force": false,
+    "kind": "lightgbm",
+    "lineage": "m2:n_estimators=100,num_leaves=4",
+    "trained_at": "2026-09-18T20:00:00+00:00",
+    "version": "m2-20260918-fixture9"
+   },
+   {
+    "examples": 8873,
+    "in_force": true,
+    "kind": "logistic",
+    "lineage": "m1:C=0.1",
+    "trained_at": "2026-09-25T20:00:00+00:00",
+    "version": "m1-20260925-fixture0"
+   }
+  ],
+  "scores": {
+   "bins": [
+    {
+     "halved": 0,
+     "hi": 0.25,
+     "kept": 0,
+     "lo": 0.2,
+     "skipped": 1
+    },
+    {
+     "halved": 0,
+     "hi": 0.3,
+     "kept": 0,
+     "lo": 0.25,
+     "skipped": 1
+    },
+    {
+     "halved": 1,
+     "hi": 0.35,
+     "kept": 0,
+     "lo": 0.3,
+     "skipped": 0
+    },
+    {
+     "halved": 0,
+     "hi": 0.4,
+     "kept": 1,
+     "lo": 0.35,
+     "skipped": 0
+    },
+    {
+     "halved": 0,
+     "hi": 0.45,
+     "kept": 2,
+     "lo": 0.4,
+     "skipped": 0
+    }
+   ],
+   "cutoff": 0.31,
+   "half_below": 0.36
+  },
+  "series": [
+   {
+    "kept": 1.9,
+    "n": 1,
+    "skipped": 0.0,
+    "t": "2026-09-28T09:53:20+00:00"
+   },
+   {
+    "kept": 3.9,
+    "n": 2,
+    "skipped": 0.0,
+    "t": "2026-09-29T01:53:20+00:00"
+   },
+   {
+    "kept": 3.9,
+    "n": 3,
+    "skipped": -1.0,
+    "t": "2026-09-29T17:53:20+00:00"
+   },
+   {
+    "kept": 2.9,
+    "n": 4,
+    "skipped": -1.0,
+    "t": "2026-09-30T09:53:20+00:00"
+   },
+   {
+    "kept": 2.9,
+    "n": 5,
+    "skipped": -0.4,
+    "t": "2026-10-01T01:53:20+00:00"
+   }
+  ],
+  "signals": {
+   "finished": 5,
+   "kept": 3,
+   "kept_mean_r": 0.9666666666666667,
+   "mean_r": 0.5,
+   "open": 1,
+   "recorded": 6,
+   "scored": 5,
+   "skipped": 2,
+   "skipped_mean_r": -0.2,
+   "win_rate": 0.6
+  },
+  "switch": "on",
+  "training": {
+   "attempt": 3,
+   "chosen": "m1",
+   "data_hash": "fixture0c0ffee00",
+   "decision": "DEC-0018",
+   "effective_n": 2005.8,
+   "end": "2026-09-25T20:00:00+00:00",
+   "examples": 8873,
+   "leans_on": [
+    {
+     "input": "btc_above_sma50",
+     "weight": 0.31
+    },
+    {
+     "input": "stop_pct",
+     "weight": -0.22
+    },
+    {
+     "input": "volume_ratio",
+     "weight": 0.12
+    }
+   ],
+   "mean_r": -0.094,
+   "models": [
+    {
+     "ci_high": null,
+     "ci_low": null,
+     "dropped": 0,
+     "dropped_mean_r": null,
+     "kept": 7408,
+     "kept_mean_r": -0.147,
+     "log_loss": 0.5914,
+     "log_loss_se": 0.0225,
+     "name": "m0",
+     "settings": null,
+     "spread": null
+    },
+    {
+     "ci_high": 0.32,
+     "ci_low": -0.113,
+     "dropped": 3095,
+     "dropped_mean_r": -0.207,
+     "kept": 4313,
+     "kept_mean_r": -0.103,
+     "log_loss": 0.5868,
+     "log_loss_se": 0.0225,
+     "name": "m1",
+     "settings": "C=0.1",
+     "spread": 0.104
+    },
+    {
+     "ci_high": 0.128,
+     "ci_low": -0.346,
+     "dropped": 2742,
+     "dropped_mean_r": -0.086,
+     "kept": 4666,
+     "kept_mean_r": -0.182,
+     "log_loss": 0.6077,
+     "log_loss_se": 0.0225,
+     "name": "m2",
+     "settings": "n_estimators=300, num_leaves=4",
+     "spread": -0.096
+    }
+   ],
+   "pairs": 30,
+   "start": "2024-09-25T20:00:00+00:00",
+   "t": "2026-09-25T20:00:00+00:00",
+   "win_rate": 0.344
+  }
+ },
+ "market": [
+  {
+   "atr_pct": 0.0431,
+   "bar": "2026-10-02T19:45:00+00:00",
+   "close": 129601.68,
+   "ema8_distance_pct": -0.116,
+   "pair": "BTC/USD",
+   "quality": [],
+   "rsi": 52.15,
+   "spread_pct": 0.0654,
+   "tradable": true,
+   "volume_ratio": 0.886,
+   "vwap_distance_pct": -0.0595,
+   "why_not": [
+    "rsi_high"
+   ],
+   "would_fire": false
+  },
+  {
+   "atr_pct": 0.1847,
+   "bar": "2026-10-02T19:45:00+00:00",
+   "close": 3754.36,
+   "ema8_distance_pct": -0.0331,
+   "pair": "ETH/USD",
+   "quality": [
+    "spread_wide"
+   ],
+   "rsi": 37.17,
+   "spread_pct": 0.204,
+   "tradable": false,
+   "volume_ratio": 0.445,
+   "vwap_distance_pct": 0.0168,
+   "why_not": [
+    "rsi_high"
+   ],
+   "would_fire": false
+  },
+  {
+   "atr_pct": 0.1464,
+   "bar": "2026-10-02T19:45:00+00:00",
+   "close": 180.09,
+   "ema8_distance_pct": -0.102,
+   "pair": "SOL/USD",
+   "quality": [
+    "bar_untraded",
+    "spread_wide"
+   ],
+   "rsi": 57.6,
+   "spread_pct": 0.3888,
+   "tradable": false,
+   "volume_ratio": null,
+   "vwap_distance_pct": -0.1532,
+   "why_not": [
+    "rsi_high"
+   ],
+   "would_fire": false
+  }
+ ],
+ "ml": {
+  "labelled": 0,
+  "model": null,
+  "observations": 1440,
+  "status": "not_trained"
+ },
+ "monitor": {
+  "bar": "2026-10-02T20:00:00+00:00",
+  "correlation": {
+   "bars": 120,
+   "high": 0.663,
+   "low": -0.017,
+   "mean": 0.331,
+   "pairs": [
+    "BTC/USD",
+    "ETH/USD",
+    "SOL/USD",
+    "XRP/USD",
+    "ADA/USD",
+    "DOGE/USD",
+    "LINK/USD",
+    "AVAX/USD"
+   ],
+   "rows": [
+    {
+     "pair": "BTC/USD",
+     "with": [
+      1.0,
+      0.663,
+      0.606,
+      0.616,
+      0.312,
+      0.379,
+      0.425,
+      0.368
+     ]
+    },
+    {
+     "pair": "ETH/USD",
+     "with": [
+      0.663,
+      1.0,
+      0.479,
+      0.581,
+      0.177,
+      0.426,
+      0.407,
+      0.259
+     ]
+    },
+    {
+     "pair": "SOL/USD",
+     "with": [
+      0.606,
+      0.479,
+      1.0,
+      0.552,
+      0.341,
+      0.25,
+      0.33,
+      0.232
+     ]
+    },
+    {
+     "pair": "XRP/USD",
+     "with": [
+      0.616,
+      0.581,
+      0.552,
+      1.0,
+      0.267,
+      0.405,
+      0.29,
+      0.271
+     ]
+    },
+    {
+     "pair": "ADA/USD",
+     "with": [
+      0.312,
+      0.177,
+      0.341,
+      0.267,
+      1.0,
+      -0.017,
+      0.035,
+      0.159
+     ]
+    },
+    {
+     "pair": "DOGE/USD",
+     "with": [
+      0.379,
+      0.426,
+      0.25,
+      0.405,
+      -0.017,
+      1.0,
+      0.315,
+      0.032
+     ]
+    },
+    {
+     "pair": "LINK/USD",
+     "with": [
+      0.425,
+      0.407,
+      0.33,
+      0.29,
+      0.035,
+      0.315,
+      1.0,
+      0.095
+     ]
+    },
+    {
+     "pair": "AVAX/USD",
+     "with": [
+      0.368,
+      0.259,
+      0.232,
+      0.271,
+      0.159,
+      0.032,
+      0.095,
+      1.0
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "above_ema20": true,
+    "above_ema50": true,
+    "atr_pct": 1.1889,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 0.6993,
+    "dist_ema20_pct": 2.8863,
+    "dist_ema50_pct": 7.3925,
+    "pair": "ADA/USD",
+    "rank": 1,
+    "ret_1": -0.6615,
+    "ret_30": 15.6506,
+    "ret_day": -0.7452,
+    "rsi": 67.84,
+    "stale": false,
+    "to_high_20_pct": -1.5037,
+    "to_high_30_pct": -1.5037,
+    "volume_ratio": 0.9423
+   },
+   {
+    "above_ema20": true,
+    "above_ema50": true,
+    "atr_pct": 0.8488,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 170932.913471,
+    "dist_ema20_pct": 2.6351,
+    "dist_ema50_pct": 7.0331,
+    "pair": "BTC/USD",
+    "rank": 2,
+    "ret_1": -0.3504,
+    "ret_30": 9.7575,
+    "ret_day": 1.8966,
+    "rsi": 76.46,
+    "stale": false,
+    "to_high_20_pct": -0.4809,
+    "to_high_30_pct": -0.4809,
+    "volume_ratio": 0.9988
+   },
+   {
+    "above_ema20": true,
+    "above_ema50": true,
+    "atr_pct": 1.0095,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 215.705204,
+    "dist_ema20_pct": 2.7062,
+    "dist_ema50_pct": 5.877,
+    "pair": "SOL/USD",
+    "rank": 3,
+    "ret_1": 0.4833,
+    "ret_30": 9.5741,
+    "ret_day": 0.3366,
+    "rsi": 67.13,
+    "stale": false,
+    "to_high_20_pct": 0.2324,
+    "to_high_30_pct": 0.2324,
+    "volume_ratio": 0.5501
+   },
+   {
+    "above_ema20": false,
+    "above_ema50": true,
+    "atr_pct": 1.3516,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 13.367362,
+    "dist_ema20_pct": -0.8576,
+    "dist_ema50_pct": 3.3571,
+    "pair": "AVAX/USD",
+    "rank": 4,
+    "ret_1": -3.1949,
+    "ret_30": 7.7558,
+    "ret_day": -3.8767,
+    "rsi": 50.49,
+    "stale": false,
+    "to_high_20_pct": -4.0335,
+    "to_high_30_pct": -4.0335,
+    "volume_ratio": 0.9641
+   },
+   {
+    "above_ema20": true,
+    "above_ema50": true,
+    "atr_pct": 1.0816,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 3.037744,
+    "dist_ema20_pct": 0.0519,
+    "dist_ema50_pct": 2.603,
+    "pair": "XRP/USD",
+    "rank": 5,
+    "ret_1": -0.6058,
+    "ret_30": 4.4827,
+    "ret_day": -1.5581,
+    "rsi": 52.93,
+    "stale": false,
+    "to_high_20_pct": -2.3044,
+    "to_high_30_pct": -2.3044,
+    "volume_ratio": 1.4879
+   },
+   {
+    "above_ema20": true,
+    "above_ema50": true,
+    "atr_pct": 0.8009,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 4799.454139,
+    "dist_ema20_pct": 1.1718,
+    "dist_ema50_pct": 2.9429,
+    "pair": "ETH/USD",
+    "rank": 6,
+    "ret_1": 0.2757,
+    "ret_30": 3.0824,
+    "ret_day": 0.2973,
+    "rsi": 61.59,
+    "stale": false,
+    "to_high_20_pct": -0.3745,
+    "to_high_30_pct": -0.3745,
+    "volume_ratio": 0.8492
+   },
+   {
+    "above_ema20": false,
+    "above_ema50": false,
+    "atr_pct": 1.4796,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 0.197251,
+    "dist_ema20_pct": -2.9897,
+    "dist_ema50_pct": -3.6617,
+    "pair": "DOGE/USD",
+    "rank": 7,
+    "ret_1": -0.5882,
+    "ret_30": -7.7719,
+    "ret_day": -1.6008,
+    "rsi": 37.5,
+    "stale": false,
+    "to_high_20_pct": -7.8882,
+    "to_high_30_pct": -9.0334,
+    "volume_ratio": 1.0053
+   },
+   {
+    "above_ema20": false,
+    "above_ema50": false,
+    "atr_pct": 1.2152,
+    "bar": "2026-10-02T20:00:00+00:00",
+    "bars": 150,
+    "close": 12.003797,
+    "dist_ema20_pct": -1.0645,
+    "dist_ema50_pct": -5.1921,
+    "pair": "LINK/USD",
+    "rank": 8,
+    "ret_1": 0.907,
+    "ret_30": -10.5626,
+    "ret_day": 2.2698,
+    "rsi": 39.09,
+    "stale": false,
+    "to_high_20_pct": -9.4778,
+    "to_high_30_pct": -12.5081,
+    "volume_ratio": 1.0086
+   }
+  ],
+  "regime": {
+   "above_ema50": 6,
+   "breadth": 0.75,
+   "btc_close": 103849.549634,
+   "btc_ret_30d": -1.6334,
+   "btc_sma50": 103313.08,
+   "btc_vs_sma50_pct": 0.5193,
+   "code": "up",
+   "daily_bar": "2026-10-02T20:00:00+00:00",
+   "pairs": 8,
+   "rising": 6,
+   "rising_share": 0.75,
+   "stale": false,
+   "vol_30d_pct": 24.15
+  },
+  "tf_min": 240
+ },
+ "perf": {
+  "by_pair": {
+   "BTC/USD": {
+    "mean_r": -1.3719999999999999,
+    "pnl": -2.38,
+    "trades": 7
+   }
+  },
+  "by_reason": {
+   "stop": 4,
+   "target": 3
+  },
+  "equity_curve": [
+   {
+    "equity": 10000.0,
+    "t": "2026-09-27T23:00:00+00:00"
+   },
+   {
+    "equity": 9999.33,
+    "t": "2026-09-28T03:00:00+00:00"
+   },
+   {
+    "equity": 9999.33,
+    "t": "2026-09-28T07:00:00+00:00"
+   },
+   {
+    "equity": 9999.33,
+    "t": "2026-09-28T11:00:00+00:00"
+   },
+   {
+    "equity": 9999.33,
+    "t": "2026-09-28T15:00:00+00:00"
+   },
+   {
+    "equity": 9998.65,
+    "t": "2026-09-28T19:00:00+00:00"
+   },
+   {
+    "equity": 9998.65,
+    "t": "2026-09-28T23:00:00+00:00"
+   },
+   {
+    "equity": 9998.65,
+    "t": "2026-09-29T03:00:00+00:00"
+   },
+   {
+    "equity": 9998.47,
+    "t": "2026-09-29T07:00:00+00:00"
+   },
+   {
+    "equity": 9997.98,
+    "t": "2026-09-29T11:00:00+00:00"
+   },
+   {
+    "equity": 9997.98,
+    "t": "2026-09-29T15:00:00+00:00"
+   },
+   {
+    "equity": 9997.98,
+    "t": "2026-09-29T19:00:00+00:00"
+   },
+   {
+    "equity": 9997.79,
+    "t": "2026-09-29T23:00:00+00:00"
+   },
+   {
+    "equity": 9998.08,
+    "t": "2026-09-30T03:00:00+00:00"
+   },
+   {
+    "equity": 9998.08,
+    "t": "2026-09-30T07:00:00+00:00"
+   },
+   {
+    "equity": 9998.08,
+    "t": "2026-09-30T11:00:00+00:00"
+   },
+   {
+    "equity": 9998.17,
+    "t": "2026-09-30T15:00:00+00:00"
+   },
+   {
+    "equity": 9998.17,
+    "t": "2026-09-30T19:00:00+00:00"
+   },
+   {
+    "equity": 9998.17,
+    "t": "2026-09-30T23:00:00+00:00"
+   },
+   {
+    "equity": 9998.17,
+    "t": "2026-10-01T03:00:00+00:00"
+   },
+   {
+    "equity": 9998.27,
+    "t": "2026-10-01T07:00:00+00:00"
+   },
+   {
+    "equity": 9998.27,
+    "t": "2026-10-01T11:00:00+00:00"
+   },
+   {
+    "equity": 9998.27,
+    "t": "2026-10-01T15:00:00+00:00"
+   },
+   {
+    "equity": 9998.15,
+    "t": "2026-10-01T19:00:00+00:00"
+   },
+   {
+    "equity": 9997.6,
+    "t": "2026-10-01T23:00:00+00:00"
+   },
+   {
+    "equity": 9997.6,
+    "t": "2026-10-02T03:00:00+00:00"
+   },
+   {
+    "equity": 9997.6,
+    "t": "2026-10-02T07:00:00+00:00"
+   },
+   {
+    "equity": 9997.57,
+    "t": "2026-10-02T11:00:00+00:00"
+   },
+   {
+    "equity": 9997.86,
+    "t": "2026-10-02T15:00:00+00:00"
+   },
+   {
+    "equity": 9997.57,
+    "t": "2026-10-02T19:00:00+00:00"
+   },
+   {
+    "equity": 9997.51,
+    "t": "2026-10-02T20:00:00+00:00"
+   }
+  ],
+  "fees": 2.8000000000000003,
+  "losses": 4,
+  "mean_r": -1.3719999999999999,
+  "recent": [
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": -0.67,
+    "r": -2.695,
+    "reason": "stop",
+    "t": "2026-10-01T21:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": 0.1,
+    "r": 0.392,
+    "reason": "target",
+    "t": "2026-10-01T06:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": 0.1,
+    "r": 0.392,
+    "reason": "target",
+    "t": "2026-09-30T15:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": 0.1,
+    "r": 0.392,
+    "reason": "target",
+    "t": "2026-09-30T00:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": -0.67,
+    "r": -2.695,
+    "reason": "stop",
+    "t": "2026-09-29T09:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": -0.67,
+    "r": -2.695,
+    "reason": "stop",
+    "t": "2026-09-28T18:00:10+00:00"
+   },
+   {
+    "held_min": 105.0,
+    "pair": "BTC/USD",
+    "pnl": -0.67,
+    "r": -2.695,
+    "reason": "stop",
+    "t": "2026-09-28T03:00:10+00:00"
+   }
+  ],
+  "total_pnl": -2.3800000000000003,
+  "total_r": -9.604,
+  "trades": 7,
+  "win_rate": 0.42857142857142855,
+  "wins": 3
+ },
+ "quality": {
+  "days": 6,
+  "max_median_spread_pct": 0.15,
+  "min_days": 14,
+  "min_traded_share": 0.9,
+  "pairs": [
+   {
+    "bars": 480,
+    "median_spread_pct": 0.0837,
+    "p95_spread_pct": 0.1096,
+    "pair": "BTC/USD",
+    "passes": false,
+    "traded_share": 1.0
+   },
+   {
+    "bars": 480,
+    "median_spread_pct": 0.2515,
+    "p95_spread_pct": 0.3286,
+    "pair": "ETH/USD",
+    "passes": false,
+    "traded_share": 0.56875
+   },
+   {
+    "bars": 480,
+    "median_spread_pct": 0.32025000000000003,
+    "p95_spread_pct": 0.4212,
+    "pair": "SOL/USD",
+    "passes": false,
+    "traded_share": 0.6625
+   }
+  ]
+ },
+ "redaction": "standard",
+ "risk": {
+  "chain_ok": true,
+  "latched": false,
+  "limits": {
+   "daily_loss_latch": 20.0,
+   "max_entries_per_day": 3,
+   "max_notional": 50.0,
+   "max_open_exposure": 500.0,
+   "max_orders_per_day": 20
+  },
+  "today": {
+   "day": "2026-10-02",
+   "entries": 1,
+   "orders": 1,
+   "realised": 0.0
+  }
+ },
+ "run_id": "20261002T200040Z-fixture",
+ "schema": "trading-lab/crypto-snapshot",
+ "schema_version": 1,
+ "sleeves": [
+  {
+   "best_r": 2.39,
+   "cash": 7766.946466686859,
+   "config": "21689556f064",
+   "equity": 10315.904800003878,
+   "equity_curve": [
+    {
+     "equity": 10315.904800003878,
+     "t": "2026-10-02T20:00:00+00:00"
+    }
+   ],
+   "exposure": 2510.4166666506,
+   "fees": 61.400000000000006,
+   "funnel": {
+    "entered": 4,
+    "fired": 5,
+    "refused": [
+     {
+      "code": "stop_too_tight",
+      "count": 1
+     }
+    ],
+    "since": "2026-09-27T20:00:10+00:00"
+   },
+   "latched": false,
+   "losses": 1,
+   "max_dd": -120.8,
+   "mean_loss_r": -1.208,
+   "mean_r": 0.9580000000000001,
+   "mean_win_r": 2.041,
+   "median_r": 1.692,
+   "name": "trend",
+   "open_pnl": 28.499999999817515,
+   "payoff": 1.689569536423841,
+   "pnl": {
+    "month": 238.96,
+    "month_trades": 1,
+    "today": 0.0,
+    "today_trades": 0,
+    "total": 287.40000000000003,
+    "week": 287.40000000000003,
+    "week_trades": 3
+   },
+   "positions": [
+    {
+     "entry_price": 2.41,
+     "entry_time": "2026-10-02T20:00:10+00:00",
+     "mark": 2.447,
+     "mark_time": "2026-10-02T20:15:10+00:00",
+     "pair": "XRP/USD",
+     "qty": 1041.66666666,
+     "risk": 99.99999999936,
+     "stop": 2.314,
+     "target": null,
+     "unrealised": 28.499999999817515,
+     "unrealised_pct": 1.535269709543563,
+     "unrealised_r": 0.28499999999999914
+    }
+   ],
+   "r_bands": [
+    {
+     "hi": -2.0,
+     "lo": null,
+     "n": 0
+    },
+    {
+     "hi": -1.5,
+     "lo": -2.0,
+     "n": 0
+    },
+    {
+     "hi": -1.0,
+     "lo": -1.5,
+     "n": 1
+    },
+    {
+     "hi": -0.5,
+     "lo": -1.0,
+     "n": 0
+    },
+    {
+     "hi": 0.0,
+     "lo": -0.5,
+     "n": 0
+    },
+    {
+     "hi": 0.5,
+     "lo": 0.0,
+     "n": 0
+    },
+    {
+     "hi": 1.0,
+     "lo": 0.5,
+     "n": 0
+    },
+    {
+     "hi": 1.5,
+     "lo": 1.0,
+     "n": 0
+    },
+    {
+     "hi": 2.0,
+     "lo": 1.5,
+     "n": 1
+    },
+    {
+     "hi": 3.0,
+     "lo": 2.0,
+     "n": 1
+    },
+    {
+     "hi": 4.0,
+     "lo": 3.0,
+     "n": 0
+    },
+    {
+     "hi": null,
+     "lo": 4.0,
+     "n": 0
+    }
+   ],
+   "recent": [
+    {
+     "entry_price": 14.2,
+     "entry_time": "2026-09-29T20:00:10+00:00",
+     "exit_price": 15.6768,
+     "exit_time": "2026-10-01T11:00:10+00:00",
+     "held_min": 2340.0,
+     "pair": "LINK/USD",
+     "pnl": 238.96,
+     "qty": 176.05633803,
+     "r": 2.39,
+     "reason": "trend_exit"
+    },
+    {
+     "entry_price": 0.62,
+     "entry_time": "2026-09-28T20:00:10+00:00",
+     "exit_price": 0.5949024,
+     "exit_time": "2026-09-30T11:00:10+00:00",
+     "held_min": 2340.0,
+     "pair": "ADA/USD",
+     "pnl": -120.8,
+     "qty": 4032.25806452,
+     "r": -1.208,
+     "reason": "stop"
+    },
+    {
+     "entry_price": 11.5,
+     "entry_time": "2026-09-27T20:00:10+00:00",
+     "exit_price": 12.374,
+     "exit_time": "2026-09-28T09:00:10+00:00",
+     "held_min": 780.0,
+     "pair": "AVAX/USD",
+     "pnl": 169.24,
+     "qty": 217.39130435,
+     "r": 1.692,
+     "reason": "trend_exit"
+    }
+   ],
+   "return_pct": 3.159048000038789,
+   "signals": [
+    {
+     "outcome": "refused",
+     "pair": "DOGE/USD",
+     "t": "2026-10-02T20:00:10+00:00",
+     "why": [
+      "stop_too_tight"
+     ]
+    },
+    {
+     "outcome": "entered",
+     "pair": "XRP/USD",
+     "t": "2026-10-02T20:00:10+00:00",
+     "why": []
+    },
+    {
+     "outcome": "entered",
+     "pair": "LINK/USD",
+     "t": "2026-09-29T20:00:10+00:00",
+     "why": []
+    },
+    {
+     "outcome": "entered",
+     "pair": "ADA/USD",
+     "t": "2026-09-28T20:00:10+00:00",
+     "why": []
+    },
+    {
+     "outcome": "entered",
+     "pair": "AVAX/USD",
+     "t": "2026-09-27T20:00:10+00:00",
+     "why": []
+    }
+   ],
+   "stage": "failed",
+   "start_equity": 10000.0,
+   "strategy": "HYP-0021",
+   "tf_min": 240,
+   "total_r": 2.874,
+   "trades": 3,
+   "why_not": [
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "BTC/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ETH/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "SOL/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "XRP/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ADA/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": true,
+     "pair": "DOGE/USD",
+     "why": []
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "LINK/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "AVAX/USD",
+     "why": [
+      "no_new_high"
+     ]
+    }
+   ],
+   "win_rate": 0.6666666666666666,
+   "wins": 2,
+   "worst_r": -1.208
+  },
+  {
+   "best_r": 1.792,
+   "cash": 10058.404799965554,
+   "config": "5ac5204a1416",
+   "equity": 10058.404799965554,
+   "equity_curve": [
+    {
+     "equity": 10058.404799965554,
+     "t": "2026-10-02T20:00:00+00:00"
+    }
+   ],
+   "exposure": 0.0,
+   "fees": 40.400000000000006,
+   "funnel": {
+    "entered": 2,
+    "fired": 4,
+    "refused": [
+     {
+      "code": "desk_coin",
+      "count": 1
+     },
+     {
+      "code": "stop_too_tight",
+      "count": 1
+     }
+    ],
+    "since": "2026-09-27T20:00:10+00:00"
+   },
+   "latched": false,
+   "losses": 1,
+   "max_dd": -120.8,
+   "mean_loss_r": -1.208,
+   "mean_r": 0.29200000000000004,
+   "mean_win_r": 1.792,
+   "median_r": 0.29200000000000004,
+   "name": "break",
+   "open_pnl": null,
+   "payoff": 1.4834437086092715,
+   "pnl": {
+    "month": 0.0,
+    "month_trades": 0,
+    "today": 0.0,
+    "today_trades": 0,
+    "total": 58.39999999999999,
+    "week": 58.39999999999999,
+    "week_trades": 2
+   },
+   "positions": [],
+   "r_bands": [
+    {
+     "hi": -2.0,
+     "lo": null,
+     "n": 0
+    },
+    {
+     "hi": -1.5,
+     "lo": -2.0,
+     "n": 0
+    },
+    {
+     "hi": -1.0,
+     "lo": -1.5,
+     "n": 1
+    },
+    {
+     "hi": -0.5,
+     "lo": -1.0,
+     "n": 0
+    },
+    {
+     "hi": 0.0,
+     "lo": -0.5,
+     "n": 0
+    },
+    {
+     "hi": 0.5,
+     "lo": 0.0,
+     "n": 0
+    },
+    {
+     "hi": 1.0,
+     "lo": 0.5,
+     "n": 0
+    },
+    {
+     "hi": 1.5,
+     "lo": 1.0,
+     "n": 0
+    },
+    {
+     "hi": 2.0,
+     "lo": 1.5,
+     "n": 1
+    },
+    {
+     "hi": 3.0,
+     "lo": 2.0,
+     "n": 0
+    },
+    {
+     "hi": 4.0,
+     "lo": 3.0,
+     "n": 0
+    },
+    {
+     "hi": null,
+     "lo": 4.0,
+     "n": 0
+    }
+   ],
+   "recent": [
+    {
+     "entry_price": 175.0,
+     "entry_time": "2026-09-28T20:00:10+00:00",
+     "exit_price": 167.916,
+     "exit_time": "2026-09-29T21:00:10+00:00",
+     "held_min": 1500.0,
+     "pair": "SOL/USD",
+     "pnl": -120.8,
+     "qty": 14.28571429,
+     "r": -1.208,
+     "reason": "stop"
+    },
+    {
+     "entry_price": 11.5,
+     "entry_time": "2026-09-27T20:00:10+00:00",
+     "exit_price": 12.42,
+     "exit_time": "2026-09-28T19:00:10+00:00",
+     "held_min": 1380.0,
+     "pair": "AVAX/USD",
+     "pnl": 179.2,
+     "qty": 217.39130435,
+     "r": 1.792,
+     "reason": "target"
+    }
+   ],
+   "return_pct": 0.5840479996555459,
+   "signals": [
+    {
+     "outcome": "refused",
+     "pair": "XRP/USD",
+     "t": "2026-10-02T20:00:10+00:00",
+     "why": [
+      "desk_coin"
+     ]
+    },
+    {
+     "outcome": "refused",
+     "pair": "DOGE/USD",
+     "t": "2026-10-02T20:00:10+00:00",
+     "why": [
+      "stop_too_tight"
+     ]
+    },
+    {
+     "outcome": "entered",
+     "pair": "SOL/USD",
+     "t": "2026-09-28T20:00:10+00:00",
+     "why": []
+    },
+    {
+     "outcome": "entered",
+     "pair": "AVAX/USD",
+     "t": "2026-09-27T20:00:10+00:00",
+     "why": []
+    }
+   ],
+   "stage": "failed",
+   "start_equity": 10000.0,
+   "strategy": "HYP-0022",
+   "tf_min": 240,
+   "total_r": 0.5840000000000001,
+   "trades": 2,
+   "why_not": [
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "BTC/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ETH/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "SOL/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "XRP/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ADA/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": true,
+     "pair": "DOGE/USD",
+     "why": []
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "LINK/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "AVAX/USD",
+     "why": [
+      "no_new_high"
+     ]
+    }
+   ],
+   "win_rate": 0.5,
+   "wins": 1,
+   "worst_r": -1.208
+  },
+  {
+   "best_r": null,
+   "cash": 10000.0,
+   "config": "06a640f39e0b",
+   "equity": 10000.0,
+   "equity_curve": [
+    {
+     "equity": 10000.0,
+     "t": "2026-10-02T20:00:00+00:00"
+    }
+   ],
+   "exposure": 0.0,
+   "fees": null,
+   "funnel": {
+    "entered": 0,
+    "fired": 1,
+    "refused": [
+     {
+      "code": "stop_too_tight",
+      "count": 1
+     }
+    ],
+    "since": "2026-10-02T20:00:10+00:00"
+   },
+   "latched": false,
+   "losses": 0,
+   "max_dd": null,
+   "mean_loss_r": null,
+   "mean_r": null,
+   "mean_win_r": null,
+   "median_r": null,
+   "name": "dip",
+   "open_pnl": null,
+   "payoff": null,
+   "pnl": {
+    "month": 0.0,
+    "month_trades": 0,
+    "today": 0.0,
+    "today_trades": 0,
+    "total": 0.0,
+    "week": 0.0,
+    "week_trades": 0
+   },
+   "positions": [],
+   "r_bands": [],
+   "recent": [],
+   "return_pct": 0.0,
+   "signals": [
+    {
+     "outcome": "refused",
+     "pair": "DOGE/USD",
+     "t": "2026-10-02T20:00:10+00:00",
+     "why": [
+      "stop_too_tight"
+     ]
+    }
+   ],
+   "stage": "failed",
+   "start_equity": 10000.0,
+   "strategy": "HYP-0023",
+   "tf_min": 240,
+   "total_r": null,
+   "trades": 0,
+   "why_not": [
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "BTC/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ETH/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "SOL/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "XRP/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "ADA/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": true,
+     "pair": "DOGE/USD",
+     "why": []
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "LINK/USD",
+     "why": [
+      "no_new_high"
+     ]
+    },
+    {
+     "bar": "2026-10-02T16:00:00+00:00",
+     "fire": false,
+     "pair": "AVAX/USD",
+     "why": [
+      "no_new_high"
+     ]
+    }
+   ],
+   "win_rate": null,
+   "wins": 0,
+   "worst_r": null
+  },
+  {
+   "best_r": null,
+   "cash": 10000.0,
+   "config": "ch-29db21a0",
+   "equity": 10000.0,
+   "equity_curve": [
+    {
+     "equity": 10000.0,
+     "t": "2026-10-02T20:00:00+00:00"
+    }
+   ],
+   "exposure": 0.0,
+   "fees": null,
+   "funnel": null,
+   "latched": false,
+   "losses": 0,
+   "max_dd": null,
+   "mean_loss_r": null,
+   "mean_r": null,
+   "mean_win_r": null,
+   "median_r": null,
+   "name": "ch-29db21a0",
+   "open_pnl": null,
+   "payoff": null,
+   "pnl": {
+    "month": 0.0,
+    "month_trades": 0,
+    "today": 0.0,
+    "today_trades": 0,
+    "total": 0.0,
+    "week": 0.0,
+    "week_trades": 0
+   },
+   "positions": [],
+   "r_bands": [],
+   "recent": [],
+   "return_pct": 0.0,
+   "signals": [],
+   "stage": "passed",
+   "start_equity": 10000.0,
+   "strategy": "Challenger: break rule on daily bars, 20-bar high, stop 3 ATR (at least 2%), target 6 ATR, only while Bitcoin trends up, volume above average",
+   "tf_min": 1440,
+   "total_r": null,
+   "trades": 0,
+   "why_not": [],
+   "win_rate": null,
+   "wins": 0,
+   "worst_r": null
+  }
+ ],
+ "strategy": {
+  "breakeven_win_rate": 0.9333,
+  "ema_period": 8,
+  "name": "rsi_vwap_ema_pullback",
+  "net_loss_pct": -1.4,
+  "net_win_pct": 0.1,
+  "rsi_below": 32.0,
+  "rsi_period": 14,
+  "slippage_bps": 5.0,
+  "stop_loss_pct": 0.5,
+  "take_profit_pct": 1.0,
+  "taker_fee_pct": 0.4,
+  "time_stop_bars": 40
+ },
+ "truncated": 0,
+ "withheld": 0
+}

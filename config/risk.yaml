@@ -1,0 +1,45 @@
+# Hard limits of the crypto desk, read by wt.crypto.risk. Amounts are US$ on the paper books.
+# Frozen per gate: changing a limit that can block an entry is a new trial in family C and needs a decision
+# record first.
+#
+# Origin: trading-lab-research `config/risk.yaml` at 217a4eb (split). Removed: key `B`, the stocks strategy's
+# limits. Every line below this header is that file's, byte for byte (tools/from-monorepo/drift.py checks it).
+
+# Crypto desk (ADR 0005, DEC-0012), read by wt.crypto.risk. Amounts are US$ on the paper book. Sizes are
+# fractional, so the ceiling is notional, not a share count.
+C:
+  allowlist: [BTC/USD, ETH/USD, SOL/USD]
+  max_notional: 50             # US$ per entry
+  max_open_exposure: 500       # US$ across all open positions
+  max_entries_per_day: 3       # per UTC day
+  max_orders_per_day: 20
+  daily_loss_latch: 20         # US$ realised loss in a UTC day; entries stay off until the owner resets it
+
+# The crypto tournament sleeves (DEC-0015), read by wt.crypto.risk. Per sleeve, as a share of that sleeve's own
+# paper book, so the limits keep their meaning as a book grows or shrinks. Key C above is HYP-0020's and unchanged.
+CT:
+  risk_pct: 1.0                # of equity risked per trade; quantity = risk / stop distance
+  max_position_pct: 30         # of equity in one position (a tight stop is capped here and risks less)
+  max_exposure_pct: 100        # of equity across open positions: no leverage
+  max_positions: 3
+  max_entries_per_day: 4       # per UTC day
+  max_orders_per_day: 20
+  daily_loss_latch_pct: 3      # realised loss in a UTC day; entries stay off for the sleeve until the owner resets it
+
+# Limits across the whole crypto tournament (DEC-0019), read by wt.crypto.risk: the registered sleeves and every
+# live challenger together. They only refuse entries. The baseline (key C) is neither counted nor limited.
+CD:
+  one_position_per_coin: true  # a sleeve may not open a coin another book of the tournament holds
+  max_open_risk_pct: 3.0       # of the books' combined equity: open risk at the stops, plus the new trade's
+
+# The data harvest (DEC-0027), read by wt.crypto.harvest: per harvest book, as a share of its own paper book. Sized
+# so that a signal is almost never refused for room: small positions, many of them. The latch is a guard against a
+# fault, not a loss limit: losing trades are expected and are the data too. Not evidence; DEC-0019 does not apply.
+CH:
+  risk_pct: 0.5                # of equity risked per trade; quantity = risk / stop distance
+  max_position_pct: 5          # of equity in one position
+  max_exposure_pct: 100        # of equity across open positions: no leverage
+  max_positions: 30            # one per coin
+  max_entries_per_day: 60      # per UTC day
+  max_orders_per_day: 200
+  daily_loss_latch_pct: 25     # realised loss in a UTC day; entries stay off for the book until the owner resets it

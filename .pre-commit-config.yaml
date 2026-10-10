@@ -1,0 +1,30 @@
+# Install once per checkout: `pre-commit install`. Run everything: `pre-commit run --all-files`.
+# No whitespace or end-of-file fixers: research records and recorded fixtures are evidence and stay byte-for-byte.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: check-merge-conflict
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  - repo: local
+    hooks:
+      - id: check-runtime
+        name: block runtime state, market data, model files and secrets (data/, var/, logs/, .env, KILL)
+        language: fail
+        entry: Runtime state, market data, model files and secrets must never be committed. See AGENTS.md "Data classes".
+        files: (?i)(\.(pdf|parquet|sqlite|db|pkl|joblib)$|^(data|var|logs|build)/|^\.env(?!\.example$)|^KILL$)
+      - id: ruff
+        name: ruff (bug-class rules)
+        language: system
+        entry: .venv/bin/ruff check --force-exclude
+        types: [python]

@@ -1,0 +1,71 @@
+name: ci
+
+# Required checks on main (repo ruleset): `test` and `ml`. A deploy takes only a commit on which both succeeded
+# (wt.ops.ci). Keep both job names stable and never add path filters to this workflow: a required check that does
+# not run leaves pull requests waiting forever.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A superseded pull-request run may be cancelled. Every commit on main keeps its full result: a deploy takes only a
+  # main commit whose checks all succeeded, and a cancelled run is not a success.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: src
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install the locked environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --require-hashes --python .venv/bin/python -r requirements.lock.txt
+          uv pip install --require-hashes --python .venv/bin/python -r requirements-dev.lock.txt
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check .
+      - name: Lint workflows (actionlint + shellcheck)
+        run: uvx --from actionlint-py==1.7.12.25 actionlint -color
+      - name: Type-check (mypy --strict on the typed modules)
+        run: make typecheck PY=.venv/bin/python
+      - name: The snapshot contract is current (schema, fixture and hashes regenerate with no diff)
+        run: |
+          make contracts PY=.venv/bin/python
+          git diff --exit-code -- contracts/
+      - name: Files made from the overlay are what the overlay holds
+        run: make overlay-check PY=.venv/bin/python
+      - name: Unit tests
+        run: .venv/bin/python -m pytest
+
+  ml:
+    # The machine-learning environment (DEC-0016): its own hashed lockfile, its own tests. The trading suite above
+    # never installs it, which is the proof that nothing the trading jobs import depends on it.
+    name: ml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: src
+      TZ: UTC
+      WT_ML_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install the locked ML environment
+        run: |
+          uv venv --python 3.12 .venv-ml
+          uv pip install --require-hashes --python .venv-ml/bin/python -r requirements-ml.lock.txt
+      - name: ML tests
+        run: .venv-ml/bin/python -m unittest discover -s tests/ml -t . -v

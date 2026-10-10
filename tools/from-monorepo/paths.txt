@@ -1,0 +1,55 @@
+# The allowlist: paths that move whole, with their history, from trading-lab-research into this repository.
+# Read by `git filter-repo --paths-from-file` (tools/from-monorepo/extract.sh). A plain line is a file or a
+# directory prefix; `glob:` lines are globs. Nothing that is not listed here can enter the history.
+#
+# Research records are listed one by one, never by a wildcard: the monorepo's research/ tree also holds
+# records derived from third-party course material, and a wildcard is how one of those would get in.
+# tools/from-monorepo/drift.py reports any monorepo file that looks like the desk's and is not listed.
+
+# ---- the desk and its learning loop ----
+src/wt/crypto/
+src/wt/ml/
+glob:scripts/crypto_*.py
+scripts/gen_crypto_fixture.py
+config/crypto.yaml
+requirements-ml.in
+requirements-ml.lock.txt
+docs/runbooks/crypto-desk.md
+
+# ---- tests and recorded fixtures ----
+tests/fixtures/kraken/
+glob:tests/unit/test_crypto*.py
+glob:tests/unit/test_ml_*.py
+tests/ml/
+
+# ---- research records (family C) ----
+research/CRYPTO_SUMMARY.md
+research/hypotheses/HYP-0020-C_PULLBACK.yaml
+research/hypotheses/HYP-0021-C_TREND.yaml
+research/hypotheses/HYP-0022-C_BREAK.yaml
+research/hypotheses/HYP-0023-C_DIP.yaml
+research/hypotheses/HYP-0024-C_TREND_R.yaml
+research/decisions/DEC-0012-crypto-desk-preregistration.md
+research/decisions/DEC-0014-crypto-incubation-paper.md
+research/decisions/DEC-0015-crypto-tournament-preregistration.md
+research/decisions/DEC-0016-crypto-learning-charter.md
+research/decisions/DEC-0017-crypto-model-calibration.md
+research/decisions/DEC-0018-crypto-training-corrections.md
+research/decisions/DEC-0019-crypto-desk-limits-and-lineage.md
+research/decisions/DEC-0020-crypto-limit-entry-screen.md
+research/decisions/DEC-0021-crypto-challenger-confirmation.md
+research/decisions/DEC-0022-crypto-cost-in-r-correction.md
+research/decisions/DEC-0025-crypto-ranked-entries.md
+research/decisions/DEC-0026-crypto-model-selection-margin.md
+research/decisions/DEC-0027-crypto-data-harvest.md
+research/experiments/EXP-0016-crypto-c1/
+research/experiments/EXP-0017-crypto-models/
+research/experiments/EXP-0018-crypto-models-calibrated/
+research/experiments/EXP-0019-crypto-models-corrected/
+research/experiments/EXP-0020-crypto-desk-limits/
+research/experiments/EXP-0021-crypto-limit-entries/
+research/experiments/EXP-0022-crypto-trend-ranked/
+research/lessons_learned/LL-0003-cost-in-r.md
+research/lessons_learned/LL-0004-weights-for-overlapping-trades.md
+research/lessons_learned/LL-0005-a-rule-asked-every-week.md
+research/lessons_learned/LL-0006-read-the-market-before-describing-it.md

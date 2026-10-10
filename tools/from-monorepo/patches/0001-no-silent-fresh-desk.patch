@@ -1,0 +1,127 @@
+diff --git a/src/wt/crypto/challengers.py b/src/wt/crypto/challengers.py
+index a64c8ac..084aa13 100644
+--- a/src/wt/crypto/challengers.py
++++ b/src/wt/crypto/challengers.py
+@@ -43,6 +43,7 @@ from wt.core.desk import DESKS, Desk
+ from wt.crypto import risk, rules
+ from wt.crypto.book import write_atomic
+ from wt.crypto.data import Bar, DataError, PairInfo
++from wt.ops import init
+ from wt.ops.locks import job_lock
+ 
+ DAY = 86_400
+@@ -559,4 +560,4 @@ def main(argv: list[str] | None = None) -> int:
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): no state, no run
+diff --git a/src/wt/crypto/control.py b/src/wt/crypto/control.py
+index b5cd48a..a6b9a98 100644
+--- a/src/wt/crypto/control.py
++++ b/src/wt/crypto/control.py
+@@ -25,6 +25,7 @@ from wt.core import ledger
+ from wt.core.desk import DESKS, Desk
+ from wt.crypto.harvest import desk_of, off_file
+ from wt.crypto.risk import latch_file, learning_file
++from wt.ops import init
+ from wt.ops.locks import job_lock
+ 
+ JOB = "crypto"
+@@ -94,4 +95,4 @@ def main(argv: list[str] | None = None, desk: Desk | None = None) -> int:
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): a control never makes a desk
+diff --git a/src/wt/crypto/cycle.py b/src/wt/crypto/cycle.py
+index d16a0da..62f3a61 100644
+--- a/src/wt/crypto/cycle.py
++++ b/src/wt/crypto/cycle.py
+@@ -32,6 +32,7 @@ from wt.crypto.book import Book, Position, Rejected, utc_day
+ from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
+ from wt.crypto.quality import assess
+ from wt.crypto.strategy import Params, entry, find_exit, read
++from wt.ops import init
+ from wt.ops.alerts import Alerts
+ 
+ SEEN_TAIL = 2000                        # journal lines checked for an id before an outbox record is appended
+@@ -119,10 +120,10 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk |
+     p, costs, qcfg, tf = Params.of(cfg["strategy"]), cfg["costs"], cfg["quality"], int(cfg["timeframe_min"])
+     cfg_hash, day = config_hash(cfg), utc_day(now)
+     if not desk.state_dir.exists():
+-        # The desk's first run on this host. It starts with its kill switch on: it records and publishes, and
+-        # opens nothing until the owner removes the file (DEC-0012).
+-        desk.state_dir.mkdir(parents=True)
+-        desk.kill_file.write_text(f"created with the desk on {day}; the owner removes it (make unkill DESK=crypto)\n")
++        # crypto-lab (CRY-DEC-0001): a missing state directory is never a new desk. A cycle makes nothing here;
++        # `python -m wt.ops.init --new-desk` makes a desk on purpose, with its kill switch on (DEC-0012).
++        print(f"Refusing: {init.problem(desk)}", file=sys.stderr)
++        return init.REFUSED
+     book_path = desk.state_dir / "book.json"
+     book = Book.load(book_path, Decimal(str(cfg["account"]["start_equity"])))
+     flush(book, book_path, desk.journal)                    # repair: anything decided last time is journalled now
+@@ -258,4 +259,4 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk |
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(run())
++    sys.exit(init.guard() or run())          # crypto-lab (CRY-DEC-0001): no state, no run
+diff --git a/src/wt/crypto/learn.py b/src/wt/crypto/learn.py
+index 14a763f..04e9635 100644
+--- a/src/wt/crypto/learn.py
++++ b/src/wt/crypto/learn.py
+@@ -28,6 +28,7 @@ from wt.core.desk import DESKS, Desk
+ from wt.crypto import outcomes, promotion, risk
+ from wt.crypto.book import write_atomic
+ from wt.crypto.data import Bar
++from wt.ops import init
+ 
+ DAY = 86_400
+ ML_PYTHON = ".venv-ml/bin/python"
+@@ -168,4 +169,4 @@ def judge(desk: Desk, cfg: dict[str, Any], rows: list[dict[str, Any]], now: floa
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(run())
++    sys.exit(init.guard() or run())          # crypto-lab (CRY-DEC-0001): no state, no run
+diff --git a/src/wt/crypto/snapshot.py b/src/wt/crypto/snapshot.py
+index c96e840..6efcba9 100644
+--- a/src/wt/crypto/snapshot.py
++++ b/src/wt/crypto/snapshot.py
+@@ -26,7 +26,7 @@ from wt.core.config import ROOT, STATE_DIR, load_yaml
+ from wt.core.desk import DESKS, Desk, desk_of_alert
+ from wt.crypto import cycle, harvest, monitor, risk
+ from wt.crypto.book import Book
+-from wt.ops import publish, safeio
++from wt.ops import init, publish, safeio
+ from wt.ops.publish import B, I, Map, N, S
+ 
+ SCHEMA_ID = DESKS["crypto"].snapshot_schema
+@@ -960,4 +960,4 @@ def _publish(a: argparse.Namespace) -> int:
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    sys.exit(init.guard() or main())         # crypto-lab (CRY-DEC-0001): no state, no snapshot
+diff --git a/tests/unit/test_crypto.py b/tests/unit/test_crypto.py
+index 71b0778..e7851d1 100644
+--- a/tests/unit/test_crypto.py
++++ b/tests/unit/test_crypto.py
+@@ -583,11 +583,15 @@ def test_the_desk_trades_the_usd_pairs_the_decision_record_names():
+ # ---------------------------------------------------------------- rollout (phase 4)
+ 
+ def test_the_desk_is_born_with_its_kill_switch_on(crypto):
+-    """The first cycle on a host creates the state directory and the kill file together: no window with entries on."""
++    """crypto-lab (CRY-DEC-0001): a cycle never makes a desk. Without the state directory it refuses and creates
++    nothing. `wt.ops.init` makes the directory and the kill file together: no window with entries on."""
++    from wt.ops import init
+     desk, a, _ = crypto
+     import shutil
+     shutil.rmtree(desk.state_dir)
+     v = venue_with_a_signal()
++    assert run(v, crypto) == init.REFUSED and not desk.state_dir.exists()      # no state, no run, nothing made
++    init.create(desk)
+     run(v, crypto)
+     assert desk.kill_file.exists() and "owner removes it" in desk.kill_file.read_text()
+     assert [r["kind"] for r in journal(desk)] == ["refused", "cycle"] and journal(desk)[0]["why"] == ["kill"]

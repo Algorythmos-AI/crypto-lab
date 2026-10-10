@@ -1,0 +1,17 @@
+# Files of the monorepo that look like the desk's (they import wt.crypto or wt.ml, are named for it, or are
+# research files that mention crypto) and are NOT moved by paths.txt, each with the reason. Same syntax as
+# paths.txt. tools/from-monorepo/drift.py reports any such file that is listed in neither place, so a new one
+# cannot be missed or taken by accident. A file that overlay/ holds a copy of (copies.json) needs no line here.
+
+# The stocks desk's audit: it names the crypto package once, in passing.
+docs/audits/STOCKS_FORENSIC_AUDIT.md
+
+# A shared test of both desks; this repository has its own host-layer tests instead (tests/unit/test_host_*.py).
+tests/unit/test_desks.py
+
+# The monorepo's registry index: this repository has its own research/README.md.
+research/README.md
+
+# Stocks records that mention crypto in passing (an audit note, and news headlines in a labelling sample).
+research/decisions/DEC-0011-audit-corrections.md
+research/experiments/EXP-0015a-catalyst-accuracy/

@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+# runtime state written by the jobs: never tracked, so a fast-forward of the live checkout cannot collide
+/var/
+/data/
+/logs/
+/KILL
+*.db
+*.sqlite
+*.parquet
+# python
+__pycache__/
+.venv/
+.venv-ml/
+.venv-ml.next/
+.venv-ml.prev/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+/build/
+# what tools/parity.sh and tools/from-monorepo/extract.sh leave behind
+/.parity/
+# macOS and tooling
+.DS_Store

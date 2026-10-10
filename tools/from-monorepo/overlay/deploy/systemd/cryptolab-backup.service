@@ -1,0 +1,20 @@
+[Unit]
+Description=Crypto Lab: verify the desk's evidence chains, back up to R2, anchor today's heads
+Wants=wt-secrets.service network-online.target
+After=wt-secrets.service network-online.target
+OnFailure=cryptolab-alert@%n.service
+
+[Service]
+Type=exec
+User=wt
+Group=wt
+WorkingDirectory=/home/wt/crypto-lab
+EnvironmentFile=/run/wt-secrets/env
+Environment=WT_ENV_FILE=/run/wt-secrets/env
+Environment=WT_HOST=systemd
+Environment=PYTHONPATH=src
+ExecStart=/home/wt/crypto-lab/.venv/bin/python -m wt.ops.backup nightly
+RuntimeMaxSec=7200
+LimitCORE=0
+NoNewPrivileges=yes
+PrivateTmp=yes

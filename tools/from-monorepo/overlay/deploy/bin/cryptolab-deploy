@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# The one command that changes this repository's checkout on the host. Runs as the job user, never with sudo.
+# Everything goes through the deploy gate (wt.ops.deploy).
+#   sudo -u wt nohup /usr/local/bin/cryptolab-deploy deploy > /tmp/cryptolab-deploy.log 2>&1 &
+set -euo pipefail
+cmd="${SSH_ORIGINAL_COMMAND:-${*:-}}"
+root=/home/wt/crypto-lab
+cd "$root"
+export WT_HOST=systemd WT_ENV_FILE=/run/wt-secrets/env PYTHONPATH=src
+if [[ -r "$WT_ENV_FILE" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$WT_ENV_FILE"
+  set +a
+fi
+case "$cmd" in
+  gate|status|preflight)
+    exec make -s "$cmd" PY=.venv/bin/python ;;
+  units-diff)
+    exec .venv/bin/python -m wt.ops.units diff --root "$root" ;;
+  deploy|deploy\ *)
+    sha="${cmd#deploy}"; sha="${sha# }"
+    [[ -z "$sha" || "$sha" =~ ^[0-9a-f]{7,40}$ ]] || { echo "cryptolab-deploy: bad sha" >&2; exit 2; }
+    # One transaction (wt.ops.deploy): on main, green, the snapshot contract unchanged or acknowledged; the full
+    # test suite on this host in a throwaway worktree BEFORE the switch; then fast-forward, sync, smoke, all
+    # under the deploy lock.
+    .venv/bin/python -m wt.ops.deploy deploy --stage ${sha:+--sha "$sha"}
+    .venv/bin/python -m wt.ops.units render --out var/units --root "$root" >/dev/null
+    .venv/bin/python -m wt.ops.units diff --root "$root" || echo "cryptolab-deploy: units changed; the owner runs: sudo cryptolab-install-units"
+    ;;
+  rollback\ runtime-*)
+    tag="${cmd#rollback }"
+    [[ "$tag" =~ ^runtime-[A-Za-z0-9._-]+$ ]] || { echo "cryptolab-deploy: bad tag" >&2; exit 2; }
+    exec make -s rollback TAG="$tag" PY=.venv/bin/python ;;
+  *)
+    echo "cryptolab-deploy: allowed: gate | status | preflight | deploy [<sha>] | units-diff | rollback runtime-<tag>" >&2
+    exit 2 ;;
+esac

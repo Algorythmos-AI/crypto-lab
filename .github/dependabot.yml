@@ -1,0 +1,17 @@
+# From Algorythmos-AI/.github templates/dependabot.yml, adapted for a desk with frozen strategies.
+version: 2
+updates:
+  # Runtime packages (numpy, scipy, scikit-learn, lightgbm, ...) change the numerics of frozen strategies and of
+  # trained models mid-way through a record, so version updates are off (limit 0). Dependabot *security* updates
+  # still open PRs; they are never auto-merged, and a runtime bump needs a decision record in research/decisions/.
+  - package-ecosystem: pip
+    directory: /
+    target-branch: main
+    schedule: { interval: weekly, day: monday, timezone: Australia/Sydney }
+    open-pull-requests-limit: 0
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule: { interval: monthly }
+    groups:
+      actions: { patterns: ["*"] }

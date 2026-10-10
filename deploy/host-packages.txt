@@ -1,0 +1,8 @@
+# System packages the host must have for this repository, one per line. The shared host's image is built by
+# another repository; this list is what the cutover runbook checks before anything is enabled.
+#
+# libgomp1: the machine-learning environment (.venv-ml) needs the system's OpenMP library, which a wheel cannot
+#           carry. A deploy never swaps in an environment that cannot import its libraries (wt.ops.deploy).
+# restic:   the daily backup (wt.ops.backup).
+libgomp1
+restic

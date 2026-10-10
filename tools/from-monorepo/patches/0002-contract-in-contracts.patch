@@ -1,0 +1,32 @@
+diff --git a/scripts/gen_crypto_fixture.py b/scripts/gen_crypto_fixture.py
+index f05f51a..87c1c1a 100644
+--- a/scripts/gen_crypto_fixture.py
++++ b/scripts/gen_crypto_fixture.py
+@@ -1,4 +1,4 @@
+-"""Writes dashboard/test/fixtures/crypto.v1.json: a crypto desk snapshot built by the real builder
++"""Writes contracts/crypto.v1.json: a crypto desk snapshot built by the real builder
+ (wt.crypto.snapshot.collect) from a synthetic, seeded desk state. No real prices, trades or account data.
+ 
+     python scripts/gen_crypto_fixture.py            # rewrite the fixture
+@@ -28,7 +28,7 @@ from wt.crypto.book import Book  # noqa: E402
+ from wt.crypto.data import PairInfo  # noqa: E402
+ from wt.ops import publish  # noqa: E402
+ 
+-FIXTURE = ROOT / "dashboard" / "test" / "fixtures" / "crypto.v1.json"
++FIXTURE = ROOT / "contracts" / "crypto.v1.json"               # crypto-lab: the dashboard is not in this repository
+ NOW = dt.datetime(2026, 10, 2, 20, 0, 40, tzinfo=dt.UTC)
+ BASE = {"BTC/USD": 120_000.0, "ETH/USD": 3_900.0, "SOL/USD": 175.0}
+ INFO = PairInfo(8, Decimal("0.01"), Decimal("0.00001"), Decimal("1"))
+diff --git a/src/wt/crypto/snapshot.py b/src/wt/crypto/snapshot.py
+index 6efcba9..1978a90 100644
+--- a/src/wt/crypto/snapshot.py
++++ b/src/wt/crypto/snapshot.py
+@@ -32,7 +32,7 @@ from wt.ops.publish import B, I, Map, N, S
+ SCHEMA_ID = DESKS["crypto"].snapshot_schema
+ SCHEMA_VERSION = 1
+ CYCLE_JOB, CYCLE_WAIT_S = "crypto", 90.0   # the bar cycle's job lock, and how long a publish waits for it
+-SCHEMA_PATH = ROOT / "dashboard" / "src" / "lib" / "crypto.schema.json"
++SCHEMA_PATH = ROOT / "contracts" / "crypto.schema.json"       # crypto-lab: the dashboard is not in this repository
+ OUT = STATE_DIR / "dashboard-crypto"
+ WINDOW_AHEAD_D = 14                     # the off-host watchdog pages while `now` is inside the published window
+ OBS_DAYS = 7

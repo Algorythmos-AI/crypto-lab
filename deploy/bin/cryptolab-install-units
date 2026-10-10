@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# OWNER ONLY (sudo): install everything this repository runs on the host, then enable its job timers.
+#
+#   sudo cryptolab-install-units --no-enable   install the files only; no timer is started, stopped or changed
+#   sudo cryptolab-install-units               install, then enable and start the job timers
+#
+# What it installs, all of it named cryptolab-*:
+#   * the job units rendered from the code (wt.ops.units); job units the code no longer has are stopped,
+#     disabled and removed;
+#   * the static units (deploy/systemd) and the helpers (deploy/bin -> /usr/local/bin), so a changed helper (this
+#     one included) is never left stale;
+#   * the backup and restore-test timers, when the host has a restic repository;
+#   * /etc/cryptolab/installed.sha256, the fingerprint of all of it, and /etc/cryptolab/installed-units.txt.
+#
+# The host is shared. This script reads the other repository's secrets file and touches nothing else of it: it
+# refuses to install any file whose name does not start with cryptolab-, and it never reads or writes /etc/wt.
+# It refuses to enable anything while the desk has no state here (python -m wt.ops.init --check): timers must not
+# start jobs on a desk that was never moved in.
+set -euo pipefail
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+enable=1
+case "${1:-}" in
+  "") ;;
+  --no-enable) enable=0 ;;
+  *) echo "usage: cryptolab-install-units [--no-enable]" >&2; exit 2 ;;
+esac
+root=/home/wt/crypto-lab
+etc=/etc/cryptolab
+prefix=cryptolab-
+secrets=/run/wt-secrets/env
+as_wt() { runuser -u wt -- env WT_HOST=systemd WT_ENV_FILE="$secrets" PYTHONPATH=src "$@"; }
+cd "$root"
+for f in deploy/systemd/* deploy/bin/*; do
+  case "$(basename "$f")" in
+    "$prefix"*) ;;
+    *) echo "refusing: $f does not start with $prefix" >&2; exit 2 ;;
+  esac
+done
+as_wt make -s gate PY=.venv/bin/python || { echo "deploy gate closed: not installing units now" >&2; exit 2; }
+if (( enable )); then
+  as_wt .venv/bin/python -m wt.ops.init --check \
+    || { echo "the desk has no state here: nothing installed, nothing enabled (docs/runbooks/cutover-from-monorepo.md)" >&2; exit 2; }
+fi
+rm -rf var/units && as_wt .venv/bin/python -m wt.ops.units render --out var/units --root "$root"
+list=$etc/installed-units.txt
+install -d -m 0755 "$etc"
+mapfile -t new < <(cd var/units && ls "$prefix"*.service "$prefix"*.timer)
+if [[ -r "$list" ]]; then
+  for u in $(comm -23 <(sort "$list") <(printf '%s\n' "${new[@]}" | sort)); do
+    case "$u" in
+      "$prefix"*) ;;
+      *) echo "leaving $u alone: it is in $list but is not this repository's" >&2; continue ;;
+    esac
+    echo "removing $u (no longer a job)"
+    systemctl disable --now "$u" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$u"
+  done
+fi
+install -m 0644 var/units/"$prefix"*.service var/units/"$prefix"*.timer /etc/systemd/system/
+install -m 0644 deploy/systemd/"$prefix"* /etc/systemd/system/
+install -m 0755 deploy/bin/"$prefix"* /usr/local/bin/
+printf '%s\n' "${new[@]}" > "$list"
+systemctl daemon-reload
+if (( enable )); then
+  for t in var/units/"$prefix"*.timer; do systemctl enable --now "$(basename "$t")"; done
+  if grep -q '^RESTIC_REPOSITORY=' "$secrets" 2>/dev/null; then
+    systemctl enable --now "${prefix}backup.timer" "${prefix}restore-test.timer"
+  else
+    echo "no RESTIC_REPOSITORY in the secrets: backup timers left off"
+  fi
+else
+  echo "installed, NOT enabled (--no-enable): no timer of this repository was started, stopped or changed"
+fi
+as_wt .venv/bin/python -m wt.ops.units fingerprint --root "$root" > "$etc/installed.sha256"
+chmod 0644 "$etc/installed.sha256"
+systemctl list-timers "${prefix}*" --all --no-pager

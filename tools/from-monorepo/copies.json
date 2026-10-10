@@ -1,0 +1,486 @@
+{
+ "about": "Every file under overlay/ that was made from a file of the monorepo: where it came from (path, commit, git blob), how (verbatim, trimmed or split) and, for a trimmed copy, what was removed or changed. tools/from-monorepo/drift.py reads this. Files of overlay/ that are not listed here are new.",
+ "source": {
+  "repo": "Algorythmos-AI/trading-lab-research"
+ },
+ "copies": [
+  {
+   "path": "src/wt/__init__.py",
+   "from": "src/wt/__init__.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/core/__init__.py",
+   "from": "src/wt/core/__init__.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/__init__.py",
+   "from": "src/wt/ops/__init__.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/backtest/__init__.py",
+   "from": "src/wt/backtest/__init__.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/core/ledger.py",
+   "from": "src/wt/core/ledger.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "4d728482eb98fc3a326674a17ef8fec0689deb4a",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/core/clock.py",
+   "from": "src/wt/core/clock.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "3f23f4277765840d05f14bc4848fab3cfbc3272f",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/alerts.py",
+   "from": "src/wt/ops/alerts.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "63ebd67fd5658747adc752fdb2a5d93dcc764e38",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/heartbeat.py",
+   "from": "src/wt/ops/heartbeat.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "1b969c65397842c03b937f2bfb9d44ef25002a4e",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/safeio.py",
+   "from": "src/wt/ops/safeio.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "4d39f4f4c0e82ee18580494c38f4a91b572531c4",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/r2.py",
+   "from": "src/wt/ops/r2.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "8ac4753416a70ac023b039109f13e3963afd3b1f",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/ops/ci.py",
+   "from": "src/wt/ops/ci.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "179f3b0013418682a7cb7f1f566dd856cc1ec85c",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/backtest/stats.py",
+   "from": "src/wt/backtest/stats.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "a7129dd026f694c937fc5b7d912fd9d7352ef9f8",
+   "mode": "verbatim"
+  },
+  {
+   "path": "requirements-dev.in",
+   "from": "requirements-dev.in",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "8e8b280f3a6473af877d7e628d2497545962f73e",
+   "mode": "verbatim"
+  },
+  {
+   "path": "requirements-dev.lock.txt",
+   "from": "requirements-dev.lock.txt",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "9058c5a0930ecf6c61de20b00aa056ac16e26d79",
+   "mode": "verbatim"
+  },
+  {
+   "path": "docs/adr/0005-desks.md",
+   "from": "docs/adr/0005-desks.md",
+   "commit": "c5d98303ce217d73c2738de0a4669106d375e955",
+   "blob": "5f531de3bcf70f7d9ca66fd8cf70e186d5995048",
+   "mode": "verbatim"
+  },
+  {
+   "path": "tests/unit/test_stats_bootstrap.py",
+   "from": "tests/unit/test_stats_bootstrap.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "d0ccd1b4b7bad963b9ac55730d6183b64ece05ba",
+   "mode": "verbatim"
+  },
+  {
+   "path": "tests/unit/test_ci.py",
+   "from": "tests/unit/test_ci.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "c37e17d1e85ebd8ef4f9cd69a82be7ef67896e43",
+   "mode": "verbatim"
+  },
+  {
+   "path": "tests/unit/test_r2.py",
+   "from": "tests/unit/test_r2.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "807074150d93e4f9ad22cf5141a6a4b8147cb81b",
+   "mode": "verbatim"
+  },
+  {
+   "path": "src/wt/core/config.py",
+   "from": "src/wt/core/config.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "b603985bd60dddd61b7cdd156664a4804002d893",
+   "mode": "trimmed",
+   "removed": "the stocks desk's state paths (forward ledger, routine, watchlist and scorecard directories)"
+  },
+  {
+   "path": "src/wt/core/desk.py",
+   "from": "src/wt/core/desk.py",
+   "commit": "c5d98303ce217d73c2738de0a4669106d375e955",
+   "blob": "59f069f52b3b41a5ae485d13703241ec2d7b2ef2",
+   "mode": "trimmed",
+   "removed": "the stocks desk record; desk_of_alert answers `host` for a key no desk owns; `installed` has no always-installed desk"
+  },
+  {
+   "path": "src/wt/ops/locks.py",
+   "from": "src/wt/ops/locks.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "8f329f3b629e29979e15a7669601a6a1d85bb18c",
+   "mode": "trimmed",
+   "removed": "the stocks paper runner's lock name"
+  },
+  {
+   "path": "src/wt/ops/thresholds.py",
+   "from": "src/wt/ops/thresholds.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "85b45ae00d09000fc8f4aed9096c922f94bbfe8b",
+   "mode": "trimmed",
+   "removed": "the stocks dashboard's thresholds and the table generated for the dashboard"
+  },
+  {
+   "path": "src/wt/ops/schedule.py",
+   "from": "src/wt/ops/schedule.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "a7595e6decf1063d0a19ed589f0f2843243a629f",
+   "mode": "trimmed",
+   "removed": "the five stocks jobs and the Mac scheduler's fire-time helper; the Job record and the four crypto jobs are unchanged"
+  },
+  {
+   "path": "src/wt/ops/publish.py",
+   "from": "src/wt/ops/publish.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "8efcaffe821bfc583e2fb21880a0e115d6a86618",
+   "mode": "trimmed",
+   "removed": "the stocks snapshot and its builders, the collector child and main, the phrase-overlap check, the free-text helpers, the host heartbeat ping"
+  },
+  {
+   "path": "src/wt/ops/hc.py",
+   "from": "src/wt/ops/hc.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "dff0b61b95aef32676f1063c84c3d1c720a99441",
+   "mode": "trimmed",
+   "removed": "the host's own heartbeat check and ping_async"
+  },
+  {
+   "path": "src/wt/ops/host.py",
+   "from": "src/wt/ops/host.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "e6cdbe3fb886bf66a296d78fbf9cfff778aa7874",
+   "mode": "trimmed",
+   "removed": "the Mac's scheduler host and the swap reading; the unit prefix changed"
+  },
+  {
+   "path": "src/wt/ops/preflight.py",
+   "from": "src/wt/ops/preflight.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "184ad594b3663098ecdc57126d3810b4a1eac236",
+   "mode": "trimmed",
+   "removed": "the check for stocks runtime files left in tracked paths"
+  },
+  {
+   "path": "src/wt/ops/units.py",
+   "from": "src/wt/ops/units.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "fa927950acb74f393d1472f12ca43fa856fd355a",
+   "mode": "trimmed",
+   "removed": "the stocks jobs' memory limits and the paper runner's OOM setting; prefix, product name, alert unit, helper and static-unit directories changed"
+  },
+  {
+   "path": "src/wt/ops/jobs.py",
+   "from": "src/wt/ops/jobs.py",
+   "commit": "c5d98303ce217d73c2738de0a4669106d375e955",
+   "blob": "92b7149d7843e6a911b72c0974ae6d6b3a04fb9d",
+   "mode": "trimmed",
+   "removed": "everything of the stocks jobs: calendar lookup, close wait, paper-session checks, followers, evidence step, daily summary, broker read; the state guard was added"
+  },
+  {
+   "path": "src/wt/ops/deploy.py",
+   "from": "src/wt/ops/deploy.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "d1e5f9df4a45d50977882605e55498ede2482adc",
+   "mode": "trimmed",
+   "removed": "the equity trading window and calendar, the live-dashboard build check, state migration, the Mac's agents, broker clean-up before a rollback; the contract check was added"
+  },
+  {
+   "path": "src/wt/ops/backup.py",
+   "from": "src/wt/ops/backup.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "0fbefa69be19561a7789007b3492244ad8894641",
+   "mode": "trimmed",
+   "removed": "the stocks ledgers, flag and digest, the weekday cache rule, prune; restic host, anchor path and day, healthchecks slug and alert titles changed; `extends` command added"
+  },
+  {
+   "path": "src/wt/research/__init__.py",
+   "from": "src/wt/research/__init__.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "0db499c1d268bac22a9f3d1cd1a2846a77230510",
+   "mode": "trimmed",
+   "removed": "the mention of methodology presets and run manifests, which are not here"
+  },
+  {
+   "path": "src/wt/research/trials.py",
+   "from": "src/wt/research/trials.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "73407849b81145d1a62fda8b051dfef65513d9ee",
+   "mode": "trimmed",
+   "removed": "the global (equity) trial history and its count"
+  },
+  {
+   "path": "requirements.lock.txt",
+   "from": "requirements.lock.txt",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "a166de289fde991eacef116dc678bfc5944890ce",
+   "mode": "trimmed",
+   "removed": "15 packages the desk never imports (broker SDK, data-frame, PDF and websocket libraries and what only they need); the 21 kept entries are identical, version and hashes"
+  },
+  {
+   "path": "deploy/bin/cryptolab-install-units",
+   "from": "deploy/oci/bin/wt-install-units",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "7b532f478195dff9c807fac7cd00c1259a9fb94a",
+   "mode": "trimmed",
+   "removed": "nothing; renamed, repointed at this repository's root, prefix and bookkeeping directory; `--no-enable`, the prefix check and the state check were added"
+  },
+  {
+   "path": "deploy/bin/cryptolab-deploy",
+   "from": "deploy/oci/bin/wt-deploy",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "c3c1c166c828fbfe3f8eb366cad9187a4eae7710",
+   "mode": "trimmed",
+   "removed": "nothing; renamed and repointed at this repository's root"
+  },
+  {
+   "path": "deploy/bin/cryptolab-alert",
+   "from": "deploy/oci/bin/wt-alert",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "ab2bc68f55480337de450d8a25f4c985701b42da",
+   "mode": "trimmed",
+   "removed": "the paper runner's higher priority; renamed, title changed"
+  },
+  {
+   "path": "deploy/systemd/cryptolab-alert@.service",
+   "from": "deploy/oci/systemd/wt-alert@.service",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "cdc6de85aed476fb3f4b7ab48bfada36a7f59345",
+   "mode": "trimmed",
+   "removed": "nothing; renamed"
+  },
+  {
+   "path": "deploy/systemd/cryptolab-backup.service",
+   "from": "deploy/oci/systemd/wt-backup.service",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "b964bbb64335ac4b21054df5cd4393796ef39f77",
+   "mode": "trimmed",
+   "removed": "nothing; renamed and repointed"
+  },
+  {
+   "path": "deploy/systemd/cryptolab-backup.timer",
+   "from": "deploy/oci/systemd/wt-backup.timer",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "d4092d745987189b6abf3bcece74cda1fc448c02",
+   "mode": "trimmed",
+   "removed": "nothing; renamed; fires at 05:20 UTC, not 19:30 New York"
+  },
+  {
+   "path": "deploy/systemd/cryptolab-restore-test.service",
+   "from": "deploy/oci/systemd/wt-restore-test.service",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "9d8496499abb9218f32893d82f4dbad5f313bda3",
+   "mode": "trimmed",
+   "removed": "nothing; renamed and repointed"
+  },
+  {
+   "path": "deploy/systemd/cryptolab-restore-test.timer",
+   "from": "deploy/oci/systemd/wt-restore-test.timer",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "7bc0d4c18040859f352a3697e8ecd28ffa649138",
+   "mode": "trimmed",
+   "removed": "nothing; renamed; fires Sunday 06:20 UTC, not Saturday 12:00 New York"
+  },
+  {
+   "path": "Makefile",
+   "from": "Makefile",
+   "commit": "f61d0080d64f98348cf818ee3367ef9b2e7e125f",
+   "blob": "24a1d135400c1c2fccc3bc467c246a75d85fbafb",
+   "mode": "trimmed",
+   "removed": "every stocks, dashboard, Mac-agent and host-seeding target; desk targets act on the one desk; init, desk-check, contracts, overlay-check, parity, test-ml and sync-venv added"
+  },
+  {
+   "path": "pyproject.toml",
+   "from": "pyproject.toml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "a5ebb0a341b9ecb0018fb44f58368dfceb93e853",
+   "mode": "trimmed",
+   "removed": "the description of the stocks engine and the excludes of directories that are not here"
+  },
+  {
+   "path": ".gitignore",
+   "from": ".gitignore",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "6205e5f2a7cfcf0e2b629b9c978bf4d5c8f24b2d",
+   "mode": "trimmed",
+   "removed": "the dashboard's, the private data's and the stocks experiment's entries"
+  },
+  {
+   "path": ".pre-commit-config.yaml",
+   "from": ".pre-commit-config.yaml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "4b0c2619104df6de54d9bef5c5bf2e2f988b57c6",
+   "mode": "trimmed",
+   "removed": "the restricted-path guard's private directories; model and data file types added"
+  },
+  {
+   "path": ".github/workflows/ci.yml",
+   "from": ".github/workflows/ci.yml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "91cc33935d113d7d04e03ff0db596fc27c4d3209",
+   "mode": "trimmed",
+   "removed": "the dashboard-gate job, the dashboard contract step and the ARM64 dry run; the contract and overlay steps were added"
+  },
+  {
+   "path": ".github/workflows/security.yml",
+   "from": ".github/workflows/security.yml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "5d30c308ce77459a2836aa79de1f0c0c46fe25c0",
+   "mode": "trimmed",
+   "removed": "the dashboard's dependency audit"
+  },
+  {
+   "path": ".github/dependabot.yml",
+   "from": ".github/dependabot.yml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "b7d7c4cf47b35de57334cc82db7dd65b69d5abe0",
+   "mode": "trimmed",
+   "removed": "the dashboard's package ecosystem"
+  },
+  {
+   "path": "tests/conftest.py",
+   "from": "tests/conftest.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "7c69d078ae92ae6a9c042252d0abf03822389a46",
+   "mode": "trimmed",
+   "removed": "nothing; the default host kind is `local`"
+  },
+  {
+   "path": "LICENSE",
+   "from": "LICENSE",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "3a2d61c17525126948ff01ce247f7a0927047a25",
+   "mode": "trimmed",
+   "removed": "the third-party material paragraph (there is none here); product name changed"
+  },
+  {
+   "path": "tests/unit/test_ledger.py",
+   "from": "tests/unit/test_journal_chain.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "c5e222d942a9243857b54b8b1afcae70725025bd",
+   "mode": "trimmed",
+   "removed": "the tests of the stocks paper runner's log and books; the ten ledger tests are unchanged"
+  },
+  {
+   "path": "tests/unit/test_backup.py",
+   "from": "tests/unit/test_backup.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "ddb16e3862b6d1041e519a379efe65024685f986",
+   "mode": "trimmed",
+   "removed": "the stocks ledgers' cases; rewritten for this repository's restic host, anchor path, refusal without a desk and the `extends` command"
+  },
+  {
+   "path": "tests/unit/test_deploy_gate.py",
+   "from": "tests/unit/test_deploy_transaction.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "cb1bfe4c71d15ca3245d398407dda5a62180ec18",
+   "mode": "trimmed",
+   "removed": "the dashboard-guard, state-migration and trading-window cases; the gate and contract tests are new"
+  },
+  {
+   "path": "tests/unit/test_smoke.py",
+   "from": "tests/unit/test_smoke.py",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "9b76caa2bd2f4ea188ae2a295ebc21c89f895e03",
+   "mode": "trimmed",
+   "removed": "the stocks modules and scripts; the modules, scripts and jobs checked are this repository's"
+  },
+  {
+   "path": "config/risk.yaml",
+   "from": "config/risk.yaml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "5bc9d384890eddf6b394ce02857a0af260587022",
+   "mode": "split",
+   "rule": {
+    "keep": [
+     "C",
+     "CT",
+     "CD",
+     "CH"
+    ],
+    "drop": [
+     "B"
+    ],
+    "header": [
+     "# Hard limits of the crypto desk, read by wt.crypto.risk. Amounts are US$ on the paper books.",
+     "# Frozen per gate: changing a limit that can block an entry is a new trial in family C and needs a decision",
+     "# record first.",
+     "#",
+     "# Origin: trading-lab-research `config/risk.yaml` at 217a4eb (split). Removed: key `B`, the stocks strategy's",
+     "# limits. Every line below this header is that file's, byte for byte (tools/from-monorepo/drift.py checks it).",
+     ""
+    ]
+   }
+  },
+  {
+   "path": "config/trial_registry.yaml",
+   "from": "config/trial_registry.yaml",
+   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
+   "blob": "bc3296c803add0402cff67cf1a8a277a782fe30f",
+   "mode": "split",
+   "rule": {
+    "keep": [
+     "families"
+    ],
+    "drop": [
+     "history"
+    ],
+    "only": {
+     "families": [
+      "C"
+     ]
+    },
+    "header": [
+     "# The trial count of family C for the Deflated Sharpe Ratio, read by wt.research.trials.family_trial_count.",
+     "# Every configuration evaluated on development data counts, whatever experiment ran it.",
+     "#",
+     "# Origin: trading-lab-research `config/trial_registry.yaml` at 217a4eb (split). Removed: `history`, the global",
+     "# count of the equity strategies. Every line below this header is that file's, byte for byte",
+     "# (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC record.",
+     ""
+    ]
+   }
+  }
+ ]
+}

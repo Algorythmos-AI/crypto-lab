@@ -1,0 +1,99 @@
+{
+ "config_hash": "01aec7d7c569",
+ "crypto_yaml_sha256": "f2ce4d30f75f2e1277ec530c5e5aa94808ef5ad98fb21ba28eeb2b25b9209a65",
+ "harvest_explore_hash": "4665be3f7122",
+ "host": {
+  "crypto_jobs": [
+   "crypto",
+   "dashboard-crypto",
+   "crypto-challengers",
+   "crypto-learn"
+  ],
+  "etc_dir": "/etc/wt",
+  "helpers": [
+   "wt-alert",
+   "wt-boot-reconcile",
+   "wt-deploy",
+   "wt-fetch-secrets",
+   "wt-install-units",
+   "wt-set-secrets"
+  ],
+  "install_root": "/home/wt/trading",
+  "job_units": [
+   "wt-crypto-challengers.service",
+   "wt-crypto-challengers.timer",
+   "wt-crypto-learn.service",
+   "wt-crypto-learn.timer",
+   "wt-crypto.service",
+   "wt-crypto.timer",
+   "wt-dashboard-crypto.service",
+   "wt-dashboard-crypto.timer",
+   "wt-dashboard.service",
+   "wt-dashboard.timer",
+   "wt-forward.service",
+   "wt-forward.timer",
+   "wt-paper-b.service",
+   "wt-paper-b.timer",
+   "wt-routine.service",
+   "wt-routine.timer",
+   "wt-weekly.service",
+   "wt-weekly.timer"
+  ],
+  "jobs": [
+   "routine",
+   "paper-b",
+   "forward",
+   "weekly",
+   "dashboard",
+   "crypto",
+   "dashboard-crypto",
+   "crypto-challengers",
+   "crypto-learn"
+  ],
+  "static_units": [
+   "wt-alert@.service",
+   "wt-backup.service",
+   "wt-backup.timer",
+   "wt-boot-reconcile.service",
+   "wt-restore-test.service",
+   "wt-restore-test.timer",
+   "wt-secrets.service",
+   "wt-secrets.timer",
+   "wt-tunnel.service"
+  ]
+ },
+ "risk_keys": {
+  "C": "d118103a02c0b91012ba5fc8eb416b99ab2a3b1b642eae44a7d7fb10a219ace6",
+  "CD": "5e60f3ccde7e9bff25c4ac464609d8a40aa233461c2ac06d0bf2e50cfb7cac74",
+  "CH": "834b0f9384e1f1e5dfc6311f20bd7dfd2f115f8aac178a8b54d6c22a200c1544",
+  "CT": "17c21176e33157e7394631eb49a8364ec81636fbfaf8b1805fe7e233f019c5ce"
+ },
+ "sections": {
+  "account": "67dabee7ea8096852146a834783475c296810a0eeed04664ad0b6bb0ef744d3b",
+  "bars": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306",
+  "costs": "96add9aadf2e88d23e04814b2ca37b0ef891bc8593b58aeab9eb5ce3797a2df5",
+  "gates": "9ff45f4df9238c3bacdea1e6aac9f3488a31e97af69146a7c551e5efb44a5332",
+  "harvest": "6eda4343797025f93f219d8b47f0eb2e9ae35ecc3ac96cbae617f01ede188c34",
+  "learning": "4ba74713b815416c95ab680dc36f3e73b0591a5fec7d47f9ad5f9cf2aac215e4",
+  "pairs": "0337ffce9bb80338c598ec4f9e751ea2133670bb581a187099749582e4be950c",
+  "quality": "3515e8b19625cc66333acb4f21367a0796ef55aa513387c1d9f558533bb5db99",
+  "quote_currency": "82bb059ec10744f31e0406b8ef7a7a0f3c30c9b18435120fa859b2c0b9627888",
+  "sleeves": "3082e866e8a3ae941ef2172ff1685977b918c9a8ffc83f1a69cdfc1374acd37f",
+  "strategy": "c96f20becf00ec8195dde61d17b2fe170c0172fdc590c37299f8203356b759e2",
+  "timeframe_min": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+  "venue": "5f635dc01fcd4882ddf675b55d6ca0868853cea2f3653dc4082b0820a7fb1254"
+ },
+ "sleeve_hashes": {
+  "break": "5ac5204a1416",
+  "dip": "06a640f39e0b",
+  "trend": "21689556f064"
+ },
+ "source": {
+  "commit": "c5d98303ce217d73c2738de0a4669106d375e955",
+  "repo": "Algorythmos-AI/trading-lab-research"
+ },
+ "trial_family_C": {
+  "in_force": 12,
+  "rows": "0fda86eee26cffb36105e3e149d87bf6cb1abdc0d7770ebcb59afb11b5c5658e"
+ }
+}
