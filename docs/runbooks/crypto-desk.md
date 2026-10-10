@@ -74,6 +74,12 @@ the sleeves, and cannot change either. State and journal are in `var/crypto/harv
 (`harvest_journal.jsonl`, backed up and anchored with the desk's other ledger). **Not evidence**: no gate or
 tournament result counts a harvest trade, and losing harvest trades are expected.
 
+Once an hour the first bar cycle also labels every finished harvest signal (an `outcome` row in the harvest
+journal, worked out as the tournament's are, from the desk's stored hourly bars) and writes one feature row
+per coin per closed hour to `var/crypto/harvest/features/hourly-<day>.jsonl`, traded or not. Neither calls
+the venue. The model in force does not read any of it (DEC-0027, 5). The Overview's Data harvest panel shows
+the counts.
+
 The desk's kill switch and chain flag stop harvest entries too. `make crypto-harvest-off` stops only
 the harvest's. `make reset-crypto-latch` also clears a harvest book's latch.
 

@@ -234,3 +234,52 @@ def test_the_exploration_book_obeys_the_switches(crypto):  # noqa: F811
     run(with_hourly(venue()), crypto)
     assert [r["why"] for r in hrows(d, "h-explore", "refused")] == [[harvest.OFF]]
     assert not hbook(d, "h-explore").positions
+
+
+# ---------------------------------------------------------------- labels and feature rows (DEC-0027, 4.3)
+
+def store_hourly(d, kraken_pair: str, rows: list) -> None:
+    p = d.state_dir / "bars" / f"{kraken_pair}-60m.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as fh:
+        for r in rows:
+            fh.write(json.dumps({"t": r[0], "o": float(r[1]), "h": float(r[2]), "l": float(r[3]), "c": float(r[4]),
+                                 "vwap": float(r[5]), "v": float(r[6]), "n": r[7]}) + "\n")
+
+
+def test_a_harvest_signal_is_labelled_from_the_stored_hourly_bars(crypto):  # noqa: F811
+    from test_crypto_sleeves import flat, row
+    d, _, _ = crypto
+    t0 = B0
+    store_hourly(d, "XBTUSD", flat(t0, H1, 130) + [row(t0 + H1, 100, 100.5, 99.8, 100.2), row(t0 + 2 * H1, 100.2, 104, 100, 103.5)])
+    hd = harvest.desk_of(d)
+    sig = {"id": "a", "kind": "signal", "sid": f"h-explore|BTC/USD|{t0}", "sleeve": "h-explore", "pair": "BTC/USD",
+           "bar": t0, "price": 100.0, "stop": 97.0, "target": 103.0, "atr": 1.0, "taken": True}
+    ledger.append(hd.journal, sig)
+    assert harvest.label(t0 + 4 * H1, d, HCFG) == 1
+    out = [r for r in hjournal(d) if r["kind"] == "outcome"]
+    assert len(out) == 1 and out[0]["sid"] == sig["sid"] and out[0]["reason"] == "target" and out[0]["r"] > 0
+    assert harvest.label(t0 + 5 * H1, d, HCFG) == 0                                   # labelled once
+    assert ledger.verify_chain(hd.journal) == []
+
+
+def test_feature_rows_cover_every_closed_hour_once(crypto):  # noqa: F811
+    from test_crypto_sleeves import flat, row
+    d, _, _ = crypto
+    store_hourly(d, "XBTUSD", flat(B0, H1, 100))
+    state: dict = {}
+    assert harvest.feature_rows(d, HCFG, state) == harvest.FEATURE_BACKFILL
+    assert harvest.feature_rows(d, HCFG, state) == 0
+    store_hourly(d, "XBTUSD", [row(B0 + H1, 100, 101, 99, 100.5)])
+    assert harvest.feature_rows(d, HCFG, state) == 1
+    files = sorted((harvest.desk_of(d).state_dir / "features").glob("hourly-*.jsonl"))
+    rows = [json.loads(x) for f in files for x in f.read_text().splitlines()]
+    assert rows[-1]["t"] == B0 + H1 and rows[-1]["pair"] == "BTC/USD" and "rsi" in rows[-1] and rows[-1]["c"] == 100.5
+    assert len({(r["t"], r["pair"]) for r in rows}) == len(rows)
+
+
+def test_the_hourly_work_runs_once_an_hour(crypto):  # noqa: F811
+    d, _, _ = crypto
+    assert harvest.hourly(B0 + 10, d, HCFG) == {"labelled": 0, "features": 0}
+    assert harvest.hourly(B0 + 910, d, HCFG) is None
+    assert harvest.hourly(B0 + H1 + 10, d, HCFG) == {"labelled": 0, "features": 0}

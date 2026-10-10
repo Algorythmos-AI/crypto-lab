@@ -24,7 +24,7 @@ from typing import Any
 
 from wt.core.config import ROOT, STATE_DIR, load_yaml
 from wt.core.desk import DESKS, Desk, desk_of_alert
-from wt.crypto import cycle, monitor, risk
+from wt.crypto import cycle, harvest, monitor, risk
 from wt.crypto.book import Book
 from wt.ops import publish, safeio
 from wt.ops.publish import B, I, Map, N, S
@@ -127,6 +127,12 @@ ALLOW: dict[str, Any] = {
                  "books": [{"name": S, "equity": N, "positions": I, "notional": N, "risk": N, "notional_pct": N,
                             "risk_pct": N}]},
     # ---- the model (DEC-0016, 3 and 4): what was trained, what is in force, and the tests it has faced ----
+    "harvest": {"switch": S, "decision": S, "coins": I, "since": S, "signals_today": I, "entries_today": I,
+                "exits_today": I, "signals_7d": I, "entries_7d": I, "labelled": I, "labelled_7d": I, "win_rate": N,
+                "mean_r": N, "feature_rows_7d": I,
+                "daily": [{"day": S, "signals": I, "entries": I, "exits": I, "labelled": I}],
+                "books": [{"name": S, "tf_min": I, "equity": N, "return_pct": N, "open": I, "trades": I,
+                           "signals": I, "signals_7d": I}]},
     "learning": {"switch": S, "lineages_started": I,
                  "model": {"version": S, "lineage": S, "state": S, "trained_at": S, "checkpoints": I, "max_checkpoints": I,
                            "checkpoint_signals": I, "finished": I, "next_checkpoint": I, "score_psi": N, "drifted": B,
@@ -793,7 +799,70 @@ def collect(now: dt.datetime, desk: Desk | None = None, cfg: dict[str, Any] | No
         "desk": _guarded(lambda: desk_view(desk, cfg, every, now), None),
         "monitor": _guarded(lambda: monitor_view(desk, cfg, now), None),
         "exposure": _guarded(lambda: exposure_view(desk, cfg, every), None),
+        "harvest": _guarded(lambda: harvest_view(desk, cfg, now), None),
     }
+
+
+HARVEST_DAYS = 14
+
+
+def harvest_view(desk: Desk, cfg: dict[str, Any], now: dt.datetime) -> dict[str, Any] | None:
+    """The data harvest (DEC-0027) in counts: what it recorded, bought and labelled, per day and per book. Not
+    evidence, and published as data collection only. None before the harvest has written anything."""
+    if not cfg.get("harvest"):
+        return None
+    hd = harvest.desk_of(desk)
+    rows = _jsonl(hd.journal)
+    if not rows:
+        return None
+    today = now.date()
+    week = (today - dt.timedelta(days=6)).isoformat()
+    first = (today - dt.timedelta(days=HARVEST_DAYS - 1)).isoformat()
+
+    def day_of(r: dict[str, Any]) -> str:
+        return str(r.get("t", ""))[:10]
+    kinds = ("signal", "entry", "exit", "outcome")
+    per_day: dict[str, Counter[str]] = {}
+    for r in rows:
+        if r.get("kind") in kinds and day_of(r) >= first:
+            per_day.setdefault(day_of(r), Counter())[str(r["kind"])] += 1
+    outs = [r for r in rows if r.get("kind") == "outcome" and isinstance(_f(r.get("r")), float)]
+    rs = [float(r["r"]) for r in outs]
+    try:
+        state = json.loads((hd.state_dir / "data.json").read_text())
+    except (OSError, ValueError):
+        state = {}
+    marks = {k: float(v[0]) for k, v in (state.get("marks") or {}).items()
+             if isinstance(v, list) and v and isinstance(v[0], int | float)}
+    start = Decimal(str(cfg["harvest"]["start_equity"]))
+    books = []
+    for name, spec in harvest.books_of(cfg).items():
+        book = Book.load(risk.sleeve_dir(hd, name) / "book.json", start)
+        mine = [r for r in rows if r.get("sleeve") == name]
+        eq = float(book.equity(marks))
+        books.append({"name": name, "tf_min": spec.c.timeframe_min, "equity": eq,
+                      "return_pct": (eq / float(start) - 1) * 100 if start else None, "open": len(book.positions),
+                      "trades": sum(1 for r in mine if r.get("kind") == "exit"),
+                      "signals": sum(1 for r in mine if r.get("kind") == "signal"),
+                      "signals_7d": sum(1 for r in mine if r.get("kind") == "signal" and day_of(r) >= week)})
+    feature_rows = 0
+    for f in sorted((hd.state_dir / "features").glob("hourly-*.jsonl")):
+        if f.stem.removeprefix("hourly-") >= week:
+            feature_rows += sum(1 for line in f.read_text(errors="replace").splitlines() if line.strip())
+    t = today.isoformat()
+
+    def count(kind: str, since: str) -> int:
+        return sum(c[kind] for d, c in per_day.items() if d >= since)
+    return {"switch": "off" if harvest.off_file(desk).exists() else "on", "decision": str(cfg["harvest"]["decision"]),
+            "coins": len(cfg["harvest"]["pairs"]), "since": min((day_of(r) for r in rows if day_of(r)), default=None),
+            "signals_today": count("signal", t), "entries_today": count("entry", t), "exits_today": count("exit", t),
+            "signals_7d": count("signal", week), "entries_7d": count("entry", week), "labelled": len(outs),
+            "labelled_7d": count("outcome", week), "win_rate": sum(1 for x in rs if x > 0) / len(rs) if rs else None,
+            "mean_r": statistics.fmean(rs) if rs else None, "feature_rows_7d": feature_rows,
+            "daily": [{"day": d, "signals": per_day.get(d, Counter())["signal"], "entries": per_day.get(d, Counter())["entry"],
+                       "exits": per_day.get(d, Counter())["exit"], "labelled": per_day.get(d, Counter())["outcome"]}
+                      for d in ((today - dt.timedelta(days=k)).isoformat() for k in range(HARVEST_DAYS - 1, -1, -1))],
+            "books": books}
 
 
 def _guarded(view: Any, empty: Any) -> Any:

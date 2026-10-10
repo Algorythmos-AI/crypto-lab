@@ -246,6 +246,8 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
             try:
                 h = harvest.run(now, api, desk, cfg, alerts, started, flush)
                 print(f"harvest: evaluated {h['evaluated']} failed {h['failed']} open {h['open']}")
+                if (hr := harvest.hourly(now, desk, cfg)) is not None:
+                    print(f"harvest hourly: labelled {hr['labelled']} feature rows {hr['features']}")
                 alerts.resolve("crypto:harvest-failed", "Crypto: the data harvest runs again", "The fault has cleared.")
             except Exception as e:  # noqa: BLE001
                 print(f"harvest failed ({e.__class__.__name__}); the desk's cycle is unaffected", file=sys.stderr)

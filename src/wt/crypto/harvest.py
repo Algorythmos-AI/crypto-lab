@@ -24,13 +24,15 @@ import hashlib
 import json
 import random
 import sys
+import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from wt.core import ledger
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import indicators, risk, rules, signals, sleeves
+from wt.crypto import features, indicators, outcomes, risk, rules, signals, sleeves
 from wt.crypto.book import Book, utc_day, write_atomic
 from wt.crypto.data import Bar, DataError, KrakenPublic, PairInfo, Quote
 from wt.ops.alerts import Alerts
@@ -39,6 +41,9 @@ STAGE = "harvest"
 PREFIX = "h-"
 EXPLORE = "h-explore"
 OFF = "harvest_off"
+HOUR = 3600
+FEATURE_BARS = 120              # hourly bars behind each feature row
+FEATURE_BACKFILL = 48           # at most this many hourly rows per coin in one pass
 
 
 def desk_of(desk: Desk | None = None) -> Desk:
@@ -244,6 +249,68 @@ def run(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: 
         write_atomic(state_path, json.dumps(state, sort_keys=True))
     return {"evaluated": sum(len(v) for r in runs for v in r.seen.values()),
             "failed": sum(len(r.failed) for r in runs), "open": sum(len(b.positions) for b in books.values())}
+
+
+def hourly_bars(desk: Desk, kraken_pair: str) -> list[Bar]:
+    """The desk's stored hourly bars of a pair, oldest first (the 1-hour harvest books keep them current)."""
+    return sleeves._read_bars(desk.state_dir / "bars" / f"{kraken_pair}-60m.jsonl")
+
+
+def label(now: float, desk: Desk, cfg: dict[str, Any]) -> int:
+    """Every harvest signal followed to its outcome (DEC-0027, 4.3), exactly as the tournament's are
+    (`wt.crypto.outcomes`), on the desk's own stored hourly bars: no call to any venue. Written into the harvest's
+    journal by the bar cycle itself, which already holds the journal's lock. Returns the rows written."""
+    hd, pairs = desk_of(desk), dict(cfg["harvest"]["pairs"])
+
+    def load(pair: str, start: int, end: int) -> list[Bar]:
+        return [b for b in hourly_bars(desk, pairs[pair]) if start <= b.t < end] if pair in pairs else []
+
+    def write(d: Desk, rec: dict[str, Any]) -> dict[str, Any]:
+        rec = {"id": uuid.uuid4().hex, **rec}
+        ledger.append(d.journal, rec, fsync=True)
+        return rec
+    return len(outcomes.run(hd, cfg, now, outcomes.read_journal(hd), load, specs=books_of(cfg), write=write))
+
+
+def feature_rows(desk: Desk, cfg: dict[str, Any], state: dict[str, Any]) -> int:
+    """One row per coin per closed hourly bar, traded or not (DEC-0027, 4.3): the bar and the 14 recorded
+    features (`wt.crypto.features`), from the stored bars. `state["features_to"]` marks how far each coin is
+    written; a coin is caught up at most FEATURE_BACKFILL rows a pass. Returns the rows written."""
+    hd, n = desk_of(desk), 0
+    done: dict[str, int] = state.setdefault("features_to", {})
+    for pair, kraken_pair in cfg["harvest"]["pairs"].items():
+        bars = hourly_bars(desk, kraken_pair)
+        new = [i for i, b in enumerate(bars) if b.t > int(done.get(pair, 0)) and i + 1 >= 30][-FEATURE_BACKFILL:]
+        for i in new:
+            b = bars[i]
+            sleeves._append(hd.state_dir / "features" / f"hourly-{utc_day(b.t)}.jsonl",
+                            {"t": b.t, "pair": pair, "o": b.o, "h": b.h, "l": b.l, "c": b.c, "v": b.v, "n": b.n,
+                             **features.extract(bars[max(0, i + 1 - FEATURE_BARS):i + 1])})
+            n += 1
+        if new:
+            done[pair] = bars[new[-1]].t
+    return n
+
+
+def hourly(now: float, desk: Desk, cfg: dict[str, Any]) -> dict[str, int] | None:
+    """The harvest's once-an-hour work, done by the first bar cycle of each hour: labels, then feature rows.
+    None when this hour's is already done. Local files only."""
+    hd = desk_of(desk)
+    path = hd.state_dir / "hourly.json"
+    state: dict[str, Any] = {}
+    if path.exists():
+        try:
+            state = json.loads(path.read_text())
+        except ValueError:
+            state = {}
+    hour = int(now) // HOUR * HOUR
+    if state.get("hour") == hour:
+        return None
+    got = {"labelled": label(now, desk, cfg), "features": feature_rows(desk, cfg, state)}
+    state["hour"] = hour
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(path, json.dumps(state, sort_keys=True))
+    return got
 
 
 def status(desk: Desk | None = None, cfg: dict[str, Any] | None = None) -> str:

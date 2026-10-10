@@ -267,6 +267,33 @@ def challengers_fixture(journal: Path, end: int) -> None:
                 ledger.append(journal, {"id": f"ch{k}a", "event": "admitted", "t": _iso(t + 301), **common})
 
 
+def harvest_fixture(state: Path, end: int, seed: int = 11) -> None:
+    """The data harvest (DEC-0027) as its books record it: five days of signals, entries, exits and outcomes on a
+    few books, and a day of hourly feature rows. Invented figures."""
+    rng = random.Random(seed)
+    folder = state / "harvest"
+    journal = folder / "harvest_journal.jsonl"
+    books = ("h-trend", "h-break-60m", "h-dip-60m", "h-explore")
+    pairs = ("BTC/USD", "ETH/USD", "SOL/USD", "LINK/USD", "LTC/USD", "DOT/USD")
+    k = 0
+    for day in range(5):
+        for _ in range(12 + 6 * day):
+            t = end - 86_400 * (4 - day) - rng.randrange(0, 80_000)
+            book, pair = rng.choice(books), rng.choice(pairs)
+            common = {"sleeve": book, "stage": "harvest", "decision": "DEC-0027", "pair": pair, "bar": t // 3600 * 3600}
+            sid = f"{book}|{pair}|{common['bar']}"
+            ledger.append(journal, {"id": f"hs{k}", "kind": "signal", "sid": sid, "t": _iso(t), "taken": True, **common})
+            ledger.append(journal, {"id": f"he{k}", "kind": "entry", "t": _iso(t + 5), **common})
+            if t < end - 30_000:
+                r = round(rng.choice([-1.0, -1.0, -0.6, 0.4, 1.2, 2.1]), 2)
+                ledger.append(journal, {"id": f"hx{k}", "kind": "exit", "t": _iso(t + 20_000), "reason": "stop" if r < 0 else "target", **common})
+                ledger.append(journal, {"id": f"ho{k}", "kind": "outcome", "sid": sid, "t": _iso(t + 21_000), "r": r, **common})
+            k += 1
+    feats = folder / "features" / f"hourly-{_iso(end)[:10]}.jsonl"
+    feats.parent.mkdir(parents=True, exist_ok=True)
+    feats.write_text("".join(json.dumps({"t": end - 3600 * h, "pair": p}) + "\n" for h in range(24) for p in pairs))
+
+
 def _iso(t: float) -> str:
     return dt.datetime.fromtimestamp(t, dt.UTC).isoformat(timespec="seconds")
 
@@ -280,6 +307,7 @@ def build() -> dict[str, Any]:
         state = Path(tmp) / "crypto"
         state.mkdir()
         synthetic(state)
+        harvest_fixture(state, int(NOW.timestamp()))
         desk = dataclasses.replace(DESKS["crypto"], state_dir=state, kill_file=state / "KILL",
                                    ledgers=(("crypto", state / "crypto_journal.jsonl"),),
                                    chain_flag=state / "chain-broken")

@@ -102,13 +102,16 @@ def follow(rec: dict[str, Any], spec: rules.Spec, grid: list[Bar], bars: list[Ba
 
 
 def run(desk: Desk, cfg: dict[str, Any], now: float, rows: list[dict[str, Any]],
-        load: Callable[[str, int, int], list[Bar]]) -> list[dict[str, Any]]:
+        load: Callable[[str, int, int], list[Bar]], specs: dict[str, rules.Spec] | None = None,
+        write: Callable[[Desk, dict[str, Any]], dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Follow every pending signal as far as the history goes; append and return the outcomes found.
-    `load(pair, start, end)` gives hourly bars."""
+    `load(pair, start, end)` gives hourly bars. `specs` are the books a signal can come from (default: the
+    tournament's) and `write(desk, row)` how a row is written (default: under the bar cycle's lock)."""
     todo = pending(rows)
     if not todo:
         return []
-    specs = specs_of(cfg, rows)
+    specs = specs if specs is not None else specs_of(cfg, rows)
+    write = write or append
     end = int(now) // HOUR * HOUR
     by_pair: dict[str, list[dict[str, Any]]] = {}
     for rec in todo:
@@ -139,7 +142,7 @@ def run(desk: Desk, cfg: dict[str, Any], now: float, rows: list[dict[str, Any]],
             res = follow(rec, spec, grid, agg[tf_s], cfg["costs"])
             if res is None:
                 continue
-            out.append(append(desk, {
+            out.append(write(desk, {
                 "kind": "outcome", "t": dt.datetime.fromtimestamp(now, dt.UTC).isoformat(timespec="seconds"),
                 "sid": rec["sid"], "sleeve": rec["sleeve"], "pair": pair, "bar": rec["bar"], "taken": bool(rec.get("taken")),
                 "exit_t": dt.datetime.fromtimestamp(int(res["exit_t"]), dt.UTC).isoformat(timespec="seconds"),
