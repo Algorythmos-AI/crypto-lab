@@ -151,10 +151,16 @@ learning:
 harvest:
   decision: DEC-0027
   rules: [trend, break, dip]
-  timeframes: [240]              # minutes; one set of books per bar length
+  timeframes: [240, 60]          # minutes; one set of books per bar length (h-trend, h-trend-60m, ...)
+  explore:                       # h-explore: one paper entry an hour in a coin drawn at random (DEC-0027, 4.2)
+    timeframe_min: 60            # drawn afresh on every closed hourly bar
+    stop_atr: 3.0                # of the hourly bars' ATR
+    target_atr: 3.0
+    min_stop_pct: 0.5            # a draw whose stop is closer than this is skipped
+    time_stop_bars: 24           # out after a day if neither level was reached
   start_equity: 10000            # USD, paper, per book
   limits: CH                     # key in config/risk.yaml
-  max_calls: 120                 # public calls a cycle, after the baseline's and the sleeves'
+  max_calls: 150                 # public calls a cycle, after the baseline's and the sleeves'
   max_seconds: 240               # no new call this long after the cycle started (the job stops at 300 s)
   pairs:                         # the learning charter's training pairs; ours -> Kraken's REST pair name
     BTC/USD: XBTUSD

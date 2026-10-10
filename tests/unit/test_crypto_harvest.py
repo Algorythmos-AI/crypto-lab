@@ -47,12 +47,11 @@ def test_the_harvest_is_the_registered_rules_unchanged_on_the_thirty_training_pa
     assert {k: v for k, v in hv["pairs"].items() if k in FILE_CFG["sleeves"]["common"]["pairs"]} == \
         FILE_CFG["sleeves"]["common"]["pairs"]
     sp = harvest.specs(FILE_CFG)
-    assert list(sp) == ["h-trend", "h-break", "h-dip"]
+    assert list(sp) == ["h-trend", "h-break", "h-dip", "h-trend-60m", "h-break-60m", "h-dip-60m"]
     for n in rules.NAMES:
         assert sp[f"h-{n}"].p == FILE_CFG["sleeves"][n] and sp[f"h-{n}"].c == rules.Common.of(FILE_CFG["sleeves"]["common"])
-    two = harvest.specs({**FILE_CFG, "harvest": {**FILE_CFG["harvest"], "timeframes": [240, 60]}})
-    assert list(two) == ["h-trend", "h-break", "h-dip", "h-trend-60m", "h-break-60m", "h-dip-60m"]
-    assert two["h-dip-60m"].c.timeframe_min == 60 and two["h-dip-60m"].p == FILE_CFG["sleeves"]["dip"]
+        assert sp[f"h-{n}-60m"].p == FILE_CFG["sleeves"][n] and sp[f"h-{n}-60m"].c.timeframe_min == 60
+    assert list(harvest.books_of(FILE_CFG)) == [*sp, "h-explore"]
 
 
 def test_the_harvest_limits_leave_room_for_a_position_in_every_coin():
@@ -183,4 +182,55 @@ def test_the_status_lines_name_every_book(crypto, off):  # noqa: F811
     if off:
         harvest.off_file(d).write_text("off")
     out = harvest.status(d, HCFG)
-    assert out.splitlines()[0].endswith("OFF" if off else "on") and len(out.splitlines()) == 4
+    assert out.splitlines()[0].endswith("OFF" if off else "on") and len(out.splitlines()) == 1 + 7
+
+
+# ---------------------------------------------------------------- the exploration book (DEC-0027, 4.2)
+
+H1 = 3_600
+
+
+def with_hourly(v):
+    """Every pair quiet on hourly bars too, the newest closed one ending as the cycle runs."""
+    from test_crypto_sleeves import flat, row
+    for k in PAIRS.values():
+        rows = flat(B0 + 14_400 - H1, H1, 120)
+        v.ohlc[(k, 60)] = (rows + [row(B0 + 14_400, 100, 100, 100, 100)], rows[-1][0])
+    return v
+
+
+def test_the_draw_is_fixed_per_bar_and_fair_over_many():
+    pairs = list(FILE_CFG["harvest"]["pairs"])
+    assert harvest.drawn(B0, pairs) == harvest.drawn(B0, list(reversed(pairs)))
+    counts: dict[str, int] = {}
+    for i in range(30 * 400):
+        p = harvest.drawn(B0 + i * H1, pairs)
+        counts[p] = counts.get(p, 0) + 1
+    assert set(counts) == set(pairs) and min(counts.values()) > 300 and max(counts.values()) < 520
+
+
+def test_the_exploration_book_enters_the_drawn_coin_and_nothing_else(crypto):  # noqa: F811
+    d, _, _ = crypto
+    # Coins whose venue minimum fits a 5% position at the test's price of 100 (DOGE's 50 and ADA's 20 do not).
+    six = {k: v_ for k, v_ in PAIRS.items() if k not in ("DOGE/USD", "ADA/USD")}
+    cfg = {**HCFG, "harvest": {**HCFG["harvest"], "pairs": six}}
+    v = with_hourly(venue())
+    assert run(v, crypto, cfg) == 0
+    want = harvest.drawn(B0 + 14_400 - H1, list(six))
+    e = hrows(d, "h-explore", "entry")
+    assert [r["pair"] for r in e] == [want] and e[0]["stage"] == "harvest" and e[0]["tf"] == 60
+    price, stop, target = (Decimal(e[0][k]) for k in ("price", "stop", "target"))
+    atr = Decimal(str(e[0]["atr"]))
+    assert abs((price - stop) - 3 * atr) < Decimal("0.2") and abs((target - price) - 3 * atr) < Decimal("0.2")
+    assert len(hrows(d, "h-explore", "signal")) == 1
+    # A quiet market: the hourly rule books looked at every coin and bought nothing.
+    assert all(not hrows(d, f"h-{n}-60m", "entry") for n in rules.NAMES)
+    assert len(hrows(d, "h-break-60m", "sleeve")[0]["pairs"]) == len(six)
+
+
+def test_the_exploration_book_obeys_the_switches(crypto):  # noqa: F811
+    d, _, _ = crypto
+    harvest.off_file(d).write_text("off")
+    run(with_hourly(venue()), crypto)
+    assert [r["why"] for r in hrows(d, "h-explore", "refused")] == [[harvest.OFF]]
+    assert not hbook(d, "h-explore").positions

@@ -66,8 +66,10 @@ is sent, and the next day's run judges it.
 ## Data harvest
 
 DEC-0027. Paper books that trade often to collect learning data: the three registered rules, numbers
-unchanged, on the 30 training pairs, under limits `CH` in `config/risk.yaml` (small positions, room for
-many). They run at the end of every bar cycle on their own budget of public calls, after the baseline and
+unchanged, on 4-hour and on 1-hour bars (`h-trend`, `h-trend-60m`, ...), and the exploration book
+`h-explore`, which enters one coin drawn at random on every hourly bar with a 3-ATR stop and target and a
+one-day time exit. All on the 30 training pairs, under limits `CH` in `config/risk.yaml` (small positions,
+room for many). They run at the end of every bar cycle on their own budget of public calls, after the baseline and
 the sleeves, and cannot change either. State and journal are in `var/crypto/harvest/`
 (`harvest_journal.jsonl`, backed up and anchored with the desk's other ledger). **Not evidence**: no gate or
 tournament result counts a harvest trade, and losing harvest trades are expected.

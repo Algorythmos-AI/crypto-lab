@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
+import random
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -28,13 +30,14 @@ from typing import Any
 
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import risk, rules, signals, sleeves
+from wt.crypto import indicators, risk, rules, signals, sleeves
 from wt.crypto.book import Book, utc_day, write_atomic
 from wt.crypto.data import Bar, DataError, KrakenPublic, PairInfo, Quote
 from wt.ops.alerts import Alerts
 
 STAGE = "harvest"
 PREFIX = "h-"
+EXPLORE = "h-explore"
 OFF = "harvest_off"
 
 
@@ -65,11 +68,56 @@ def specs(cfg: dict[str, Any]) -> dict[str, rules.Spec]:
     return out
 
 
+def explore_spec(cfg: dict[str, Any]) -> rules.Spec | None:
+    """The exploration book (DEC-0027, 4.2), or None when the config has none. Its entry is drawn at random
+    (`drawn`), so the base rule only lends it the engine's exits: a fixed stop and target in ATR of its own bars,
+    and a time exit. BREAK has exactly those and nothing else (no trail, no trend exit)."""
+    ex = cfg["harvest"].get("explore")
+    if not ex:
+        return None
+    c = dataclasses.replace(rules.Common.of(cfg["sleeves"]["common"]), timeframe_min=int(ex["timeframe_min"]),
+                            stop_atr=float(ex["stop_atr"]), min_stop_pct=float(ex["min_stop_pct"]))
+    p = {k: v for k, v in cfg["sleeves"]["break"].items() if k in ("high_bars", "volume_bars")}
+    p.update(target_atr=float(ex["target_atr"]), time_stop_bars=int(ex["time_stop_bars"]))
+    return rules.Spec(EXPLORE, "break", c, p, "exploration")
+
+
+def drawn(t: int, pairs: list[str]) -> str:
+    """The coin the exploration book enters on the bar that opened at `t`: the same answer on every host and in
+    every rerun, and a fresh draw for every bar."""
+    return random.Random(f"{EXPLORE}|{t}").choice(sorted(pairs))
+
+
+def explore_entry(pair: str, pairs: list[str]) -> rules.Entry:
+    """The exploration book's entry "rule" for one pair: it fires on a traded bar when the draw names the pair."""
+    def entry(base: str, bars: Any, daily: Any, c: rules.Common, p: dict[str, Any]) -> tuple[bool, tuple[str, ...], float | None]:
+        atr = indicators.atr(bars, c.atr_period) if bars else None
+        why = []
+        if not bars or drawn(bars[-1].t, pairs) != pair:
+            why.append("not_drawn")
+        elif not bars[-1].traded:
+            why.append("bar_untraded")
+        if atr is None or atr <= 0:
+            why.append("no_atr")
+        return not why, tuple(why), atr
+    return entry
+
+
 def extras(cfg: dict[str, Any], sp: dict[str, rules.Spec]) -> dict[str, dict[str, Any]]:
     """What every harvest journal row carries: the stage says it is data collection, never evidence."""
+    def config(s: rules.Spec) -> str:
+        if s.name == EXPLORE:
+            return hashlib.sha256(json.dumps(cfg["harvest"]["explore"], sort_keys=True).encode()).hexdigest()[:12]
+        return sleeves.sleeve_hash(cfg, s.base)
     return {n: {"sleeve": n, "strategy": s.hypothesis, "tf": s.c.timeframe_min, "stage": STAGE,
-                "decision": str(cfg["harvest"]["decision"]), "config": sleeves.sleeve_hash(cfg, s.base)}
+                "decision": str(cfg["harvest"]["decision"]), "config": config(s)}
             for n, s in sp.items()}
+
+
+def books_of(cfg: dict[str, Any]) -> dict[str, rules.Spec]:
+    """Every harvest book: the rule books, then the exploration book when there is one."""
+    ex = explore_spec(cfg)
+    return {**specs(cfg), **({ex.name: ex} if ex else {})}
 
 
 def pair_infos(api: KrakenPublic, state: dict[str, Any], pairs: list[str], day: str,
@@ -111,8 +159,7 @@ def run(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: 
     store is the desk's own (`bars/`), shared with the sleeves: a series one of them fetched is not fetched again."""
     hv = cfg["harvest"]
     hd = desk_of(desk)
-    sp = specs(cfg)
-    names = list(sp)
+    sp, ex = specs(cfg), explore_spec(cfg)
     base = rules.Common.of(cfg["sleeves"]["common"])
     pairs: dict[str, str] = dict(hv["pairs"])
     budget = sleeves.Budget(api, started, max_calls=api.calls + int(hv["max_calls"]),
@@ -125,15 +172,23 @@ def run(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: 
         except ValueError:
             pass
     start = Decimal(str(hv["start_equity"]))
-    books = {n: Book.load(risk.sleeve_dir(hd, n) / "book.json", start) for n in names}
-    for n in names:
+    every = {**sp, **({ex.name: ex} if ex else {})}
+    books = {n: Book.load(risk.sleeve_dir(hd, n) / "book.json", start) for n in every}
+    for n in every:
         flush(books[n], risk.sleeve_dir(hd, n) / "book.json", hd.journal)
-    off = {n: OFF for n in names} if off_file(desk).exists() else {}
-    run_ = sleeves.Run(now, hd, sp, cfg["costs"], cfg["quality"], risk.load_sleeve_limits(str(hv["limits"])),
-                       tuple(pairs), books, pair_infos(api, state, list(pairs.values()), utc_day(now), budget),
-                       extras(cfg, sp), alerts, off=off, desk_lim=None)
+    switched_off = off_file(desk).exists()
+    infos = pair_infos(api, state, list(pairs.values()), utc_day(now), budget)
+    lim, xtra = risk.load_sleeve_limits(str(hv["limits"])), extras(cfg, every)
+
+    def make(group: dict[str, rules.Spec]) -> sleeves.Run:
+        return sleeves.Run(now, hd, group, cfg["costs"], cfg["quality"], lim, tuple(pairs),
+                           {n: books[n] for n in group}, infos, {n: xtra[n] for n in group}, alerts,
+                           off={n: OFF for n in group} if switched_off else {}, desk_lim=None)
+    # The exploration book's entry rule is its own, so it is a run of its own: `Run.entry` replaces the entry rule
+    # of every book in a run.
+    runs = [make(sp)] + ([make({ex.name: ex})] if ex else [])
     keep: dict[int, int] = {base.daily_min: base.daily_bars}
-    for s in sp.values():
+    for s in every.values():
         keep[s.c.timeframe_min] = max(keep.get(s.c.timeframe_min, 0), s.c.bars)
 
     def observe(rec: dict[str, Any]) -> None:
@@ -146,14 +201,20 @@ def run(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: 
     try:
         if "BTC/USD" in pairs:
             btc = series(pairs["BTC/USD"], base.daily_min)
-            run_.market = signals.market(btc[-base.daily_bars:])
+            market = signals.market(btc[-base.daily_bars:])
+            for r in runs:
+                r.market = market
     except Exception:  # noqa: BLE001 — a signal without its market inputs is still a signal
-        run_.market = {}
+        pass
     try:
         for name, kraken_pair in rotated(pairs, now):
-            def quote_of(kraken_pair: str = kraken_pair) -> Quote:
-                budget.spend()
-                return api.ticker(kraken_pair)
+            quotes: list[Quote] = []
+
+            def quote_of(kraken_pair: str = kraken_pair, quotes: list[Quote] = quotes) -> Quote:
+                if not quotes:                              # one quote per pair a cycle, whichever book asks
+                    budget.spend()
+                    quotes.append(api.ticker(kraken_pair))
+                return quotes[0]
 
             def minutes_of(since: int, kraken_pair: str = kraken_pair) -> list[Bar]:
                 budget.spend()
@@ -163,20 +224,26 @@ def run(now: float, api: KrakenPublic, desk: Desk, cfg: dict[str, Any], alerts: 
                 return series(kraken_pair, tf)
             try:
                 daily = bars_of(base.daily_min)[-base.daily_bars:]
-                sleeves.step_pair(run_, name, kraken_pair, bars_of, daily, quote_of, minutes_of, observe)
+                for r in runs:
+                    if ex is not None and ex.name in r.specs:
+                        r.entry = explore_entry(name, list(pairs))
+                        sleeves.step_pair(r, name, kraken_pair, bars_of, daily, quote_of, minutes_of)
+                    else:
+                        sleeves.step_pair(r, name, kraken_pair, bars_of, daily, quote_of, minutes_of, observe)
             except DataError as e:
-                run_.failed[name] = str(e)[:80]
+                runs[0].failed[name] = str(e)[:80]
                 if str(e) == "budget":
                     break
             except Exception as e:  # noqa: BLE001 — a pair's fault must not stop the other pairs
-                run_.failed[name] = e.__class__.__name__
+                runs[0].failed[name] = e.__class__.__name__
     finally:
-        sleeves.finish(run_, flush)
-        state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in run_.marks.items()}}
+        for r in runs:
+            sleeves.finish(r, flush)
+            state["marks"] = {**(state.get("marks") or {}), **{k: [v, int(now)] for k, v in r.marks.items()}}
         state_path.parent.mkdir(parents=True, exist_ok=True)
         write_atomic(state_path, json.dumps(state, sort_keys=True))
-    return {"evaluated": sum(len(v) for v in run_.seen.values()), "failed": len(run_.failed),
-            "open": sum(len(b.positions) for b in books.values())}
+    return {"evaluated": sum(len(v) for r in runs for v in r.seen.values()),
+            "failed": sum(len(r.failed) for r in runs), "open": sum(len(b.positions) for b in books.values())}
 
 
 def status(desk: Desk | None = None, cfg: dict[str, Any] | None = None) -> str:
@@ -192,7 +259,7 @@ def status(desk: Desk | None = None, cfg: dict[str, Any] | None = None) -> str:
                 rows.append(json.loads(line))
             except ValueError:
                 continue
-    for n in specs(cfg):
+    for n in books_of(cfg):
         book = Book.load(risk.sleeve_dir(hd, n) / "book.json", Decimal(str(cfg["harvest"]["start_equity"])))
         mine = [r for r in rows if r.get("sleeve") == n]
         k = {kind: sum(1 for r in mine if r.get("kind") == kind) for kind in ("signal", "entry", "exit")}
