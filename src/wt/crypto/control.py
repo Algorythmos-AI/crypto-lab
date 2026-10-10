@@ -4,13 +4,15 @@
     python -m wt.crypto.control reset-latch     (make reset-crypto-latch)
     python -m wt.crypto.control learning-off    (make crypto-learning-off)
     python -m wt.crypto.control learning-on     (make crypto-learning-on)
+    python -m wt.crypto.control harvest-off     (make crypto-harvest-off)
+    python -m wt.crypto.control harvest-on      (make crypto-harvest-on)
 
 All refuse while a bar cycle is running, so a control never changes under a decision in flight, and both leave a
 line in the desk's journal: who changed a control, and when, is evidence too.
 
 The learning switch (DEC-0016, 6) is one file. While it exists no model acts, no challenger is drawn, tested or
 admitted, and live challengers open nothing. The baseline and the three registered sleeves trade on, and no exit
-is ever stopped by it.
+is ever stopped by it. The harvest switch (DEC-0027) is the same kind of file for the data-harvest books only.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ import uuid
 
 from wt.core import ledger
 from wt.core.desk import DESKS, Desk
+from wt.crypto.harvest import desk_of, off_file
 from wt.crypto.risk import latch_file, learning_file
 from wt.ops.locks import job_lock
 
@@ -28,13 +31,15 @@ JOB = "crypto"
 
 
 def _learning(kind: str, desk: Desk) -> int:
-    target, off = learning_file(desk), kind == "learning-off"
+    harvest = kind.startswith("harvest-")
+    target, off = (off_file(desk) if harvest else learning_file(desk)), kind.endswith("-off")
+    what = "Crypto data harvest" if harvest else "Crypto learning"
     with job_lock(JOB) as free:
         if not free:
             print("Refusing: a crypto bar cycle is running; try again in a few seconds")
             return 2
         if target.exists() == off:
-            print(f"Crypto learning is already {'off' if off else 'on'}")
+            print(f"{what} is already {'off' if off else 'on'}")
             return 0
         now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
         if off:
@@ -43,13 +48,17 @@ def _learning(kind: str, desk: Desk) -> int:
         else:
             target.unlink()
         ledger.append(desk.journal, {"id": uuid.uuid4().hex, "kind": "control", "action": kind, "t": now}, fsync=True)
-    print("Crypto learning switched off: no challenger is drawn or admitted, live challengers open nothing. "
-          "Exits are still managed." if off else "Crypto learning switched on")
+    if harvest:
+        print("Crypto data harvest switched off: its books open nothing. Exits are still managed." if off
+              else "Crypto data harvest switched on")
+    else:
+        print("Crypto learning switched off: no challenger is drawn or admitted, live challengers open nothing. "
+              "Exits are still managed." if off else "Crypto learning switched on")
     return 0
 
 
 def _apply(kind: str, desk: Desk) -> int:
-    if kind.startswith("learning-"):
+    if kind.startswith(("learning-", "harvest-")):
         return _learning(kind, desk)
     target = desk.kill_file if kind == "unkill" else latch_file(desk)
     what = "kill switch" if kind == "unkill" else "loss latch"
@@ -61,7 +70,9 @@ def _apply(kind: str, desk: Desk) -> int:
             print("Refusing: a crypto bar cycle is running; try again in a few seconds")
             return 2
         # The tournament sleeves keep a latch each (DEC-0015); "reset the latch" clears those too.
-        more = sorted((desk.state_dir / "sleeves").glob("*/latch")) if kind == "reset-latch" else []
+        # The harvest's books (DEC-0027) keep a latch each too.
+        more = sorted([*(desk.state_dir / "sleeves").glob("*/latch"),
+                       *(desk_of(desk).state_dir / "sleeves").glob("*/latch")]) if kind == "reset-latch" else []
         if not target.exists() and not more:
             print(f"The crypto {what} is already off")
             return 0
@@ -77,7 +88,8 @@ def _apply(kind: str, desk: Desk) -> int:
 
 def main(argv: list[str] | None = None, desk: Desk | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m wt.crypto.control")
-    ap.add_argument("action", choices=("unkill", "reset-latch", "learning-off", "learning-on"))
+    ap.add_argument("action", choices=("unkill", "reset-latch", "learning-off", "learning-on",
+                                           "harvest-off", "harvest-on"))
     return _apply(ap.parse_args(argv).action, desk or DESKS["crypto"])
 
 

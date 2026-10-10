@@ -144,6 +144,50 @@ learning:
       skip_held: [false, true]
     retire: {min_trades: 30, max_drawdown_pct: 10, idle_days: 60, idle_min_trades: 5}
 
+# The data harvest (DEC-0027): paper books that trade often to collect learning data. NOT evidence: no gate,
+# tournament result or decision counts a harvest trade, and its journal is its own (var/crypto/harvest/). The
+# registered rules run here with their numbers unchanged (`sleeves`); only the coins, bar lengths and limits differ.
+# Not part of any config hash above.
+harvest:
+  decision: DEC-0027
+  rules: [trend, break, dip]
+  timeframes: [240]              # minutes; one set of books per bar length
+  start_equity: 10000            # USD, paper, per book
+  limits: CH                     # key in config/risk.yaml
+  max_calls: 120                 # public calls a cycle, after the baseline's and the sleeves'
+  max_seconds: 240               # no new call this long after the cycle started (the job stops at 300 s)
+  pairs:                         # the learning charter's training pairs; ours -> Kraken's REST pair name
+    BTC/USD: XBTUSD
+    ETH/USD: ETHUSD
+    SOL/USD: SOLUSD
+    XRP/USD: XRPUSD
+    ADA/USD: ADAUSD
+    DOGE/USD: XDGUSD
+    LINK/USD: LINKUSD
+    AVAX/USD: AVAXUSD
+    LTC/USD: LTCUSD
+    BCH/USD: BCHUSD
+    DOT/USD: DOTUSD
+    UNI/USD: UNIUSD
+    AAVE/USD: AAVEUSD
+    ATOM/USD: ATOMUSD
+    NEAR/USD: NEARUSD
+    APT/USD: APTUSD
+    ARB/USD: ARBUSD
+    OP/USD: OPUSD
+    SUI/USD: SUIUSD
+    INJ/USD: INJUSD
+    FIL/USD: FILUSD
+    ETC/USD: ETCUSD
+    XLM/USD: XLMUSD
+    HBAR/USD: HBARUSD
+    ICP/USD: ICPUSD
+    ALGO/USD: ALGOUSD
+    CRV/USD: CRVUSD
+    SEI/USD: SEIUSD
+    TIA/USD: TIAUSD
+    SHIB/USD: SHIBUSD
+
 account:
   start_equity: 10000            # USD, paper
 

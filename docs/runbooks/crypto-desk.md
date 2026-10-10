@@ -36,6 +36,8 @@ lines `[ok]`), then the Crypto tab of the dashboard.
 | Allow entries (the owner's decision; before gate C1 the trades are incubation, DEC-0014) | `make unkill DESK=crypto` |
 | Turn all learning off or on (the model's filter and the challengers; DEC-0016, 6) | `make crypto-learning-off` / `make crypto-learning-on` |
 | See the challengers: who was drawn, the backtest verdicts, who is live | `make crypto-challengers` |
+| Stop or allow the data-harvest books' entries (DEC-0027; exits are still managed) | `make crypto-harvest-off` / `make crypto-harvest-on` |
+| See the data-harvest books | `make crypto-harvest` |
 | Clear the daily-loss latch | `make reset-crypto-latch` |
 | Stop the desk entirely | owner: `sudo systemctl disable --now wt-crypto.timer wt-dashboard-crypto.timer` |
 
@@ -60,6 +62,18 @@ A challenger that passes gate C1 is then run once on the two years before that h
 only if it closed at least 15 trades there and made money after costs. One that does not is recorded as failed
 with `not_confirmed_on_earlier_history`. If the earlier history cannot be fetched it stays registered, one notice
 is sent, and the next day's run judges it.
+
+## Data harvest
+
+DEC-0027. Paper books that trade often to collect learning data: the three registered rules, numbers
+unchanged, on the 30 training pairs, under limits `CH` in `config/risk.yaml` (small positions, room for
+many). They run at the end of every bar cycle on their own budget of public calls, after the baseline and
+the sleeves, and cannot change either. State and journal are in `var/crypto/harvest/`
+(`harvest_journal.jsonl`, backed up and anchored with the desk's other ledger). **Not evidence**: no gate or
+tournament result counts a harvest trade, and losing harvest trades are expected.
+
+The desk's kill switch and chain flag stop harvest entries too. `make crypto-harvest-off` stops only
+the harvest's. `make reset-crypto-latch` also clears a harvest book's latch.
 
 ## Limits across the desk
 
@@ -97,6 +111,7 @@ says. `make crypto-learning-off` takes the model out at once.
 | Crypto: the model did not score this cycle's signals | the scorer timed out, failed or its model is stale | nothing was skipped: every signal traded as its rule says. `journalctl -u wt-crypto -n 50`; a stale model means the weekly training has not registered one for 14 days |
 | Crypto: the weekly model training failed | the trainer exited, timed out or wrote no summary | the model in force is unchanged; `journalctl -u wt-crypto-learn -n 80`. It is tried again the next day |
 | Crypto: the model promoted / demoted / suspended | information: the daily tests changed what the model may do | nothing to do; the Learning panel shows the test |
+| Crypto: the data harvest did not run | the harvest's part of the bar cycle raised | the baseline and the sleeves ran. `journalctl -u wt-crypto -n 50`; a harvest position is not watched meanwhile. `make crypto-harvest-off` stops its entries |
 | Crypto: daily loss limit reached | realised loss hit the latch | review the day's exits on the Strategy page; `make reset-crypto-latch` when satisfied |
 | Crypto: an open position has an unobserved gap | more than 12 hours without 1-minute data while a position was open | the day is an incident for gate C2; the position is still managed |
 | Evidence chain broken: crypto entries off | the nightly check found a break in `crypto_journal.jsonl` | do not edit the file; compare with the last anchor and the restic snapshot ([backups](backups-and-lease.md)) |

@@ -23,7 +23,8 @@ FIX = ROOT / "tests/fixtures/kraken"
 FILE_CFG = yaml.safe_load((ROOT / "config/crypto.yaml").read_text())
 # The recordings under tests/fixtures/kraken are the AUD pairs (thin markets: what the quality gate is for), so the
 # tests run the frozen rules on those pairs whatever the desk trades.
-CFG = {**FILE_CFG, "quote_currency": "AUD", "pairs": {"BTC/AUD": "XBTAUD", "ETH/AUD": "ETHAUD", "SOL/AUD": "SOLAUD"}}
+# The data harvest (DEC-0027) has its own tests (test_crypto_harvest.py); these are about the desk without it.
+CFG = {**FILE_CFG, "harvest": None, "quote_currency": "AUD", "pairs": {"BTC/AUD": "XBTAUD", "ETH/AUD": "ETHAUD", "SOL/AUD": "SOLAUD"}}
 P = Params.of(CFG["strategy"])
 INFO = PairInfo(8, Decimal("0.1"), Decimal("0.00005"), Decimal("1"))
 DAY = 86_400

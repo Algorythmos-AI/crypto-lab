@@ -22,7 +22,8 @@ from wt.ops import alerts as alerts_mod
 from wt.ops import publish
 
 ROOT = Path(__file__).resolve().parents[2]
-CFG = yaml.safe_load((ROOT / "config/crypto.yaml").read_text())
+# Without the data harvest (DEC-0027), which has its own tests: these count the sleeves' own calls and rows.
+CFG = {**yaml.safe_load((ROOT / "config/crypto.yaml").read_text()), "harvest": None}
 SC = CFG["sleeves"]
 C = rules.Common.of(SC["common"])
 PAIRS: dict[str, str] = SC["common"]["pairs"]

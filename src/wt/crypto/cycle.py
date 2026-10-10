@@ -27,7 +27,7 @@ from typing import Any
 from wt.core import ledger
 from wt.core.config import load_yaml
 from wt.core.desk import DESKS, Desk
-from wt.crypto import challengers, features, promotion, risk, rules, scorer, sleeves
+from wt.crypto import challengers, features, harvest, promotion, risk, rules, scorer, sleeves
 from wt.crypto.book import Book, Position, Rejected, utc_day
 from wt.crypto.data import Bar, DataError, KrakenPublic, Quote
 from wt.crypto.quality import assess
@@ -240,6 +240,18 @@ def run(now: float | None = None, api: KrakenPublic | None = None, desk: Desk | 
             alerts.fire("crypto:sleeves-failed", "Crypto: the tournament sleeves did not run",
                         f"{e.__class__.__name__} in the sleeves' cycle. The baseline ran. Open sleeve positions "
                         "are not being watched until this is fixed.", 4)
+        if cfg.get("harvest"):
+            # The data harvest (DEC-0027) runs last, on what is left of the cycle's time: its books are not evidence
+            # and nothing it does can change the baseline's or the sleeves' results.
+            try:
+                h = harvest.run(now, api, desk, cfg, alerts, started, flush)
+                print(f"harvest: evaluated {h['evaluated']} failed {h['failed']} open {h['open']}")
+                alerts.resolve("crypto:harvest-failed", "Crypto: the data harvest runs again", "The fault has cleared.")
+            except Exception as e:  # noqa: BLE001
+                print(f"harvest failed ({e.__class__.__name__}); the desk's cycle is unaffected", file=sys.stderr)
+                alerts.fire("crypto:harvest-failed", "Crypto: the data harvest did not run",
+                            f"{e.__class__.__name__} in the harvest's cycle. The baseline and the sleeves ran. Open "
+                            "harvest positions are not being watched until this is fixed.", 3)
     return 0
 
 
