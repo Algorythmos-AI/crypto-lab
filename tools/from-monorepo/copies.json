@@ -63,8 +63,8 @@
   {
    "path": "src/wt/ops/safeio.py",
    "from": "src/wt/ops/safeio.py",
-   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
-   "blob": "4d39f4f4c0e82ee18580494c38f4a91b572531c4",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "7371403f540f5a11252d030f8b31681c295dc586",
    "mode": "verbatim"
   },
   {
@@ -165,16 +165,16 @@
   {
    "path": "src/wt/ops/schedule.py",
    "from": "src/wt/ops/schedule.py",
-   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
-   "blob": "a7595e6decf1063d0a19ed589f0f2843243a629f",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "2e6369007aac72814a1f55bfcc488c1e18880595",
    "mode": "trimmed",
-   "removed": "the five stocks jobs and the Mac scheduler's fire-time helper; the Job record and the four crypto jobs are unchanged"
+   "removed": "the five stocks jobs, the options desk's job (options-live) and the Mac scheduler's fire-time helper; the Job record and the four crypto jobs are unchanged"
   },
   {
    "path": "src/wt/ops/publish.py",
    "from": "src/wt/ops/publish.py",
-   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
-   "blob": "8efcaffe821bfc583e2fb21880a0e115d6a86618",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "79ada4b5043269326634280b06a276243bf06325",
    "mode": "trimmed",
    "removed": "the stocks snapshot and its builders, the collector child and main, the phrase-overlap check, the free-text helpers, the host heartbeat ping"
   },
@@ -205,10 +205,10 @@
   {
    "path": "src/wt/ops/units.py",
    "from": "src/wt/ops/units.py",
-   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
-   "blob": "fa927950acb74f393d1472f12ca43fa856fd355a",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "14728a21272de461c0ebbf3557fe8bd21398249c",
    "mode": "trimmed",
-   "removed": "the stocks jobs' memory limits and the paper runner's OOM setting; prefix, product name, alert unit, helper and static-unit directories changed"
+   "removed": "the stocks jobs' and the options job's memory limits and the paper runner's OOM setting; prefix, product name, alert unit, helper and static-unit directories changed"
   },
   {
    "path": "src/wt/ops/jobs.py",
@@ -325,10 +325,10 @@
   {
    "path": "Makefile",
    "from": "Makefile",
-   "commit": "f61d0080d64f98348cf818ee3367ef9b2e7e125f",
-   "blob": "24a1d135400c1c2fccc3bc467c246a75d85fbafb",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "7d7e29bceb0f8af4632d44b15b1b96c53ccead67",
    "mode": "trimmed",
-   "removed": "every stocks, dashboard, Mac-agent and host-seeding target; desk targets act on the one desk; init, desk-check, contracts, overlay-check, parity, test-ml and sync-venv added"
+   "removed": "every stocks, options, dashboard, Mac-agent and host-seeding target and typed module; desk targets act on the one desk; init, desk-check, contracts, overlay-check, parity, test-ml and sync-venv added"
   },
   {
    "path": "pyproject.toml",
@@ -456,8 +456,8 @@
   {
    "path": "config/trial_registry.yaml",
    "from": "config/trial_registry.yaml",
-   "commit": "217a4eb807682626d26909306c6ad45c5f1d273f",
-   "blob": "bc3296c803add0402cff67cf1a8a277a782fe30f",
+   "commit": "c8d92e140b02c0aa3d03305caaba123becdb5fbe",
+   "blob": "7b3c4742d5af2d396b64f8659ec64591fbe761f1",
    "mode": "split",
    "rule": {
     "keep": [
@@ -466,18 +466,24 @@
     "drop": [
      "history"
     ],
-    "only": {
-     "families": [
-      "C"
-     ]
+    "under": {
+     "families": {
+      "keep": [
+       "C"
+      ],
+      "drop": [
+       "O"
+      ]
+     }
     },
     "header": [
      "# The trial count of family C for the Deflated Sharpe Ratio, read by wt.research.trials.family_trial_count.",
      "# Every configuration evaluated on development data counts, whatever experiment ran it.",
      "#",
-     "# Origin: trading-lab-research `config/trial_registry.yaml` at 217a4eb (split). Removed: `history`, the global",
-     "# count of the equity strategies. Every line below this header is that file's, byte for byte",
-     "# (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC record.",
+     "# Origin: trading-lab-research `config/trial_registry.yaml` at c8d92e1 (split). Removed: `history`, the global",
+     "# count of the equity strategies, and family `O`, the options desk's. Every line below this header is that",
+     "# file's, byte for byte (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC",
+     "# record.",
      ""
     ]
    }

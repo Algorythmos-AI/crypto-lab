@@ -1,7 +1,7 @@
 # Crypto Lab tasks. `make` (or `make help`) lists them.
 # The live checkout on the host changes only through `make deploy` (the deploy gate, wt.ops.deploy).
 #
-# Origin: trading-lab-research `Makefile` at f61d008 (trimmed). Removed: every stocks, dashboard, Mac-agent and
+# Origin: trading-lab-research `Makefile` at c8d92e1 (trimmed). Removed: every stocks, dashboard, Mac-agent and
 # host-seeding target. Changed: `kill`, `unkill` and the status targets act on this repository's one desk;
 # `schema` became `contracts`. Added: `init`, `desk-check`, `contracts`, `overlay-check`, `parity`, `test-ml`,
 # `sync-venv`.

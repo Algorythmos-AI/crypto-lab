@@ -11,7 +11,8 @@ has to do:
 
   copies    every file under overlay/ that was made from a monorepo file (copies.json): `verbatim` (the same
             bytes), `trimmed` (cut down by hand) or `split` (some top-level keys of a config file, byte for
-            byte). Reported: the source changed since the copy was made; a verbatim copy that was edited here;
+            byte; under a kept key, `under` names the second-level keys that are kept and the ones that are
+            dropped). Reported: the source changed since the copy was made; a verbatim copy that was edited here;
             a split that no longer equals what its rule gives.
   patches   every patch under patches/ (a deliberate change to a file that moves whole): does it still apply to
             the files at <commit>?
@@ -98,9 +99,38 @@ def segments(text: str) -> list[tuple[str | None, list[str]]]:
     return out
 
 
+def under(key: str, lines: list[str], rule: dict) -> list[str]:
+    """A kept top-level key's segment cut at its second-level keys (two spaces in): the ones `rule["keep"]` names
+    stay exactly as written, the ones `rule["drop"]` names go, each with the comment lines directly above it. A
+    second-level key named in neither stops the split, as a top-level one does, and so does a kept one that is
+    not there. The lines before the first second-level key (the key's own line and its comments) stay."""
+    keep, drop = list(rule["keep"]), list(rule.get("drop", []))
+    starts: list[tuple[int, str]] = []
+    for i, line in enumerate(lines):
+        m = re.match(r"^  ([A-Za-z_][\w-]*):", line)
+        if m:
+            j = i
+            while j > 1 and lines[j - 1].startswith("  #"):
+                j -= 1
+            starts.append((j, m.group(1)))
+    found = [name for _, name in starts]
+    for name in found:
+        if name not in keep and name not in drop:
+            raise ValueError(f"{key} holds {found}: {name!r} is in neither `keep` nor `drop` of `under.{key}`")
+    if [name for name in found if name in keep] != keep:
+        raise ValueError(f"{key} holds {found}, expected the kept {keep} in that order")
+    out = lines[:starts[0][0]] if starts else list(lines)
+    for k, (j, name) in enumerate(starts):
+        end = starts[k + 1][0] if k + 1 < len(starts) else len(lines)
+        if name in keep:
+            out += lines[j:end]
+    return out
+
+
 def split(text: str, rule: dict) -> str:
     """The copy a `split` rule gives: the rule's header, then the kept keys' segments exactly as written. A key
-    the rule names neither in `keep` nor in `drop` stops the split: somebody has to say whose it is."""
+    the rule names neither in `keep` nor in `drop` stops the split: somebody has to say whose it is. The same
+    holds one level down for a kept key that `under` has a rule for (see `under`)."""
     keep, drop = list(rule["keep"]), list(rule.get("drop", []))
     kept: list[str] = []
     for key, lines in segments(text):
@@ -108,10 +138,8 @@ def split(text: str, rule: dict) -> str:
             continue
         if key not in keep:
             raise ValueError(f"top-level key {key!r} is in neither `keep` nor `drop`")
-        if key in rule.get("only", {}):
-            subs = re.findall(r"^  ([A-Za-z_][\w-]*):", "".join(lines), re.M)
-            if subs != list(rule["only"][key]):
-                raise ValueError(f"{key} holds {subs}, expected exactly {rule['only'][key]}")
+        if key in rule.get("under", {}):
+            lines = under(key, lines, rule["under"][key])
         kept += lines
     body = "".join(kept)
     return "".join(h + "\n" for h in rule.get("header", [])) + body

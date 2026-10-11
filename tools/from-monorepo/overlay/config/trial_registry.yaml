@@ -1,9 +1,10 @@
 # The trial count of family C for the Deflated Sharpe Ratio, read by wt.research.trials.family_trial_count.
 # Every configuration evaluated on development data counts, whatever experiment ran it.
 #
-# Origin: trading-lab-research `config/trial_registry.yaml` at 217a4eb (split). Removed: `history`, the global
-# count of the equity strategies. Every line below this header is that file's, byte for byte
-# (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC record.
+# Origin: trading-lab-research `config/trial_registry.yaml` at c8d92e1 (split). Removed: `history`, the global
+# count of the equity strategies, and family `O`, the options desk's. Every line below this header is that
+# file's, byte for byte (tools/from-monorepo/drift.py checks it). A new row here from now on names a CRY-DEC
+# record.
 
 # Trial families counted apart from the global (equity) count above. Same rules: append-only, the newest accepted
 # row is in force. Read by wt.research.trials.family_trial_count.

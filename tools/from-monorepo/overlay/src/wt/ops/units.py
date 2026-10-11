@@ -27,10 +27,11 @@ Design, unchanged from the origin:
   * AccuracySec=1s, Persistent=false: a missed start is not replayed after a reboot; the next bar cycle makes up
     a missed one, and the daily jobs run again the next day.
 
-Origin: trading-lab-research `src/wt/ops/units.py` at 217a4eb (trimmed). Removed: the memory limits of the five
-stocks jobs and the paper runner's OOM setting. Changed: the unit prefix, the description's product name, the
-alert unit's name, the helper and static-unit directories (`deploy/bin`, `deploy/systemd`), and the files the
-fingerprint covers. The unit text of the four crypto jobs is otherwise what the origin renders.
+Origin: trading-lab-research `src/wt/ops/units.py` at c8d92e1 (trimmed). Removed: the memory limits of the five
+stocks jobs and of the options job, and the paper runner's OOM setting. Changed: the unit prefix, the
+description's product name, the alert unit's name, the helper and static-unit directories (`deploy/bin`,
+`deploy/systemd`), and the files the fingerprint covers. The unit text of the four crypto jobs is otherwise what
+the origin renders.
 """
 from __future__ import annotations
 
