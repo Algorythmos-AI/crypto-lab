@@ -93,6 +93,17 @@ def test_the_split_configs_are_what_their_rule_gives_and_only_their_header_is_ne
         assert "'Z'" in str(e)
     else:
         raise AssertionError("an unknown top-level key must stop the split")
+    # one level down, under a kept key: the named second-level keys are kept or dropped, an unnamed one stops it
+    two = "F:\n  # about a\n  A:\n    - 1\n  # about b\n  B:\n    - 2\n"
+    rule = {"keep": ["F"], "under": {"F": {"keep": ["A"], "drop": ["B"]}}}
+    assert drift.split(two, rule) == "F:\n  # about a\n  A:\n    - 1\n" == drift.split(drift.split(two, rule), rule)
+    for text in (two + "  Z:\n    - 3\n", "F:\n  B:\n    - 2\n"):
+        try:
+            drift.split(text, rule)
+        except ValueError as e:
+            assert "F holds" in str(e)
+        else:
+            raise AssertionError("an unknown second-level key, or a kept one that is missing, must stop the split")
 
 
 def test_the_allowlist_names_no_wildcard_under_research_and_every_entry_matches_something():

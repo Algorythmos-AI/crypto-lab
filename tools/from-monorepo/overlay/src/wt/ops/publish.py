@@ -8,7 +8,7 @@
 The snapshot itself, its allowlist and its schema id belong to the desk (`wt.crypto.snapshot`). The dashboard that
 receives it lives in another repository and vendors the schema from `contracts/`.
 
-Origin: trading-lab-research `src/wt/ops/publish.py` at 217a4eb (trimmed). Removed: the stocks snapshot (its
+Origin: trading-lab-research `src/wt/ops/publish.py` at c8d92e1 (trimmed). Removed: the stocks snapshot (its
 allowlist `ALLOW`, schema path and version, `from_docs`, `extras`, `v3_views`, the series and window builders,
 `build`, `validate`, `verify_stored`), the collector child process and `main`, the phrase-overlap check against
 restricted text (`LeakIndex`, `corpus_files`; the crypto snapshot has no free-text field and never used it),
@@ -156,7 +156,7 @@ def sign(body: bytes, secret: str, ts: int) -> str:
 
 
 def send(body: bytes, url: str, secret: str, bypass: str | None, tries: int = 3,
-         deadline: float | None = None) -> tuple[bool, str]:
+         deadline: float | None = None, key_id: str | None = None) -> tuple[bool, str]:
     """POST the snapshot, retrying transient failures with backoff (2, 4, 8 ... s). `deadline` (time.monotonic()):
     never start a wait that would end after it, so a network drop can't run the job past its own limit."""
     last = ""
@@ -164,8 +164,8 @@ def send(body: bytes, url: str, secret: str, bypass: str | None, tries: int = 3,
         ts = int(time.time())
         headers = {"content-type": "application/json", "x-wt-timestamp": str(ts),
                    "x-wt-signature": sign(body, secret, ts)}
-        if key_id := os.environ.get("DASHBOARD_KEY_ID"):
-            headers["x-wt-key-id"] = key_id          # this host's own key; absent = "default"
+        if kid := key_id or os.environ.get("DASHBOARD_KEY_ID"):
+            headers["x-wt-key-id"] = kid             # this host's own key, or the caller's; absent = "default"
         if bypass:
             headers["x-vercel-protection-bypass"] = bypass
         try:

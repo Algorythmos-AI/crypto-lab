@@ -7,10 +7,10 @@ The bar cycle and its publish run on UTC calendar boundaries. The two daily jobs
 (`et` is an OnCalendar day-and-time spec, rendered with the zone): they keep the hour they had on the shared
 host, in the quiet hours of the other platform's jobs there.
 
-Origin: trading-lab-research `src/wt/ops/schedule.py` at 217a4eb (trimmed). Removed: the five stocks jobs
-(routine, paper-b, forward, weekly, dashboard). The `Job` record and the four crypto jobs are unchanged, field
-for field; `label`, `hour`, `minute` and `weekday` are what the record carried for the Mac's scheduler and are
-read by nothing here.
+Origin: trading-lab-research `src/wt/ops/schedule.py` at c8d92e1 (trimmed). Removed: the five stocks jobs
+(routine, paper-b, forward, weekly, dashboard) and the options desk's job (options-live). The `Job` record and
+the four crypto jobs are unchanged, field for field; `label`, `hour`, `minute` and `weekday` are what the record
+carried for the Mac's scheduler and are read by nothing here.
 """
 from __future__ import annotations
 

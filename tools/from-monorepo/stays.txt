@@ -15,3 +15,11 @@ research/README.md
 # Stocks records that mention crypto in passing (an audit note, and news headlines in a labelling sample).
 research/decisions/DEC-0011-audit-corrections.md
 research/experiments/EXP-0015a-catalyst-accuracy/
+
+# The options desk's records (family O): its scope and probation rules, and its four hypotheses. They mention the
+# crypto desk only to set themselves apart from it, and none of them changes family C or this desk's configuration.
+research/decisions/DEC-0028-options-desk-scope-and-probation-rules.md
+research/hypotheses/HYP-0025-O_BRK_PDH.yaml
+research/hypotheses/HYP-0026-O_RECLAIM_PDL.yaml
+research/hypotheses/HYP-0027-O_BRK_PDL.yaml
+research/hypotheses/HYP-0028-O_REJECT_PDH.yaml
